@@ -1,6 +1,5 @@
 package com.zhy.dfs.client;
 
-import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -20,15 +19,21 @@ public class DFSClient {
     private static SocketChannel channel;
 
     private static Selector selector;
+    
+    private static String CLIENT_STORE_PATH;
 
     public static void main(String[] args) {
         try {
+            if(args == null || args.length == 0) {
+                System.exit(0);
+            }
+            CLIENT_STORE_PATH = args[0];
             DFSClient client = new DFSClient();
             DFSClientHandleThread clientHandleThread = new DFSClientHandleThread();
             clientHandleThread.init();
             new Thread(clientHandleThread).start();
             Thread.sleep(2000);
-            client.send("listen.rar", channel);
+            client.send("D:\\", "aaa.txt", channel);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -67,8 +72,9 @@ public class DFSClient {
                                 channel.finishConnect();
                             }
                             channel.configureBlocking(false);
+                            channel.register(selector, SelectionKey.OP_READ);
                         } else if (key.isReadable()) {
-
+                            
                             // receive
                             File file = receiveData((SocketChannel) key.channel());
                             write(file);
@@ -86,12 +92,12 @@ public class DFSClient {
          * @param file
          */
         private void write(File file) throws Exception {
-            FileOutputStream fos = new FileOutputStream(new java.io.File(TemplateUtils.getMessage("client.file.path") + file.getFileName()));
+            FileOutputStream fos = new FileOutputStream(new java.io.File(CLIENT_STORE_PATH + file.getFileName()));
             FileChannel fileChannel = fos.getChannel();
             ByteBuffer buffer = ByteBuffer.wrap(file.getContents());
             fileChannel.write(buffer);
             fileChannel.close();
-            fos.close();
+//            fos.close();
         }
 
         /**
@@ -125,7 +131,7 @@ public class DFSClient {
                 byteArrayOutputStream.write(dataBuffer.array());
                 dataBuffer.clear();
             }
-            channel.close();
+//            channel.close();
             byteArrayOutputStream.close();
             return new File(fileName, contentLength, byteArrayOutputStream.toByteArray());
         }
@@ -137,7 +143,7 @@ public class DFSClient {
      * 
      * @param file
      */
-    private void send(String fileName, SocketChannel channel) throws Exception {
+    private void send(String fileFolder, String fileName, SocketChannel channel) throws Exception {
         System.out.println(2222222);
         StringBuilder builder = new StringBuilder();
         if (fileName.length() < 100) {
@@ -148,7 +154,7 @@ public class DFSClient {
         String fileAllName = fileName + builder.toString();
         byte[] fileNameBytes = fileAllName.getBytes();
         ByteBuffer buffer = ByteBuffer.allocate(1024);
-        FileInputStream fis = new FileInputStream(new java.io.File(TemplateUtils.getMessage("client.file.path") + fileName));
+        FileInputStream fis = new FileInputStream(new java.io.File(fileFolder + fileName));
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         FileChannel fileChannel = fis.getChannel();
         int size = 0;

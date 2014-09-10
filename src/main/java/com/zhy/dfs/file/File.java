@@ -56,7 +56,7 @@ public class File {
         result = prime * result + contentLength;
         result = prime * result + Arrays.hashCode(contents);
         result = prime * result + ((fileName == null) ? 0 : fileName.hashCode());
-        return result;
+        return Math.abs(result);
     }
 
     @Override

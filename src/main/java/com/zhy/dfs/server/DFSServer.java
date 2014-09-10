@@ -1,6 +1,8 @@
 package com.zhy.dfs.server;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -55,7 +57,8 @@ public class DFSServer {
     private void init() throws Exception {
         serverChannel = ServerSocketChannel.open();
         serverChannel.configureBlocking(false);
-        serverChannel.socket().bind(new InetSocketAddress(TemplateUtils.getMessage("server.host"), Integer.parseInt(TemplateUtils.getMessage("server.port"))));
+        serverChannel.socket().bind(
+                new InetSocketAddress(TemplateUtils.getMessage("server.host"), Integer.parseInt(TemplateUtils.getMessage("server.port"))));
         selector = Selector.open();
         serverChannel.register(selector, SelectionKey.OP_ACCEPT);
     }
@@ -77,19 +80,19 @@ public class DFSServer {
                     ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key.channel();
                     SocketChannel channel = serverSocketChannel.accept();
                     channel.configureBlocking(false);
-                    channel.write(ByteBuffer.wrap(new String(Code.SERVER_ACCPECT_SUCCESS).getBytes()));
+                    // channel.write(ByteBuffer.wrap(new String(Code.SERVER_ACCPECT_SUCCESS).getBytes()));
                     channel.register(selector, SelectionKey.OP_READ);
                     socketChannels.add(channel);
                 } else if (key.isReadable()) {
-
-                    // client request send message to server
-                    File file = receiveData((SocketChannel) key.channel());
+                    SocketChannel ch = (SocketChannel) key.channel();
+                    File file = receiveData(ch);
                     write(file);
 
                     // shard and replication
                     int hashCode = file.hashCode();
                     int shard = hashCode % socketChannels.size();
                     SocketChannel channel = socketChannels.get(shard);
+                    channel.register(selector, SelectionKey.OP_READ);
                     send(file, channel);
                 }
             }
@@ -113,12 +116,13 @@ public class DFSServer {
         byte[] fileNameBytes = fileAllName.getBytes();
         byte[] contents = file.getContents();
         byte[] data = new byte[fileNameBytes.length + contents.length];
-        for (int i = 0; i < data.length; i++) {
-            if (i >= fileNameBytes.length) {
-                data[i] = contents[i];
-            } else {
-                data[i] = fileNameBytes[i];
-            }
+        for (int i = 0; i < fileNameBytes.length; i++) {
+            data[i] = fileNameBytes[i];
+        }
+        int index = 0;
+        for (int i = fileNameBytes.length; i < data.length; i++) {
+            data[i] = contents[index];
+            index++;
         }
         ByteBuffer buffer = ByteBuffer.wrap(data);
         channel.write(buffer);
@@ -169,7 +173,7 @@ public class DFSServer {
             byteArrayOutputStream.write(dataBuffer.array());
             dataBuffer.clear();
         }
-        channel.close();
+        // channel.close();
         byteArrayOutputStream.close();
         byte[] byteArray = byteArrayOutputStream.toByteArray();
         return new File(fileName, contentLength, byteArray);
