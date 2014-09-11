@@ -21,7 +21,12 @@ public enum Code {
     /**
      * server monitor client
      */
-    HEARTBEAT(20000);
+    SERVER_HEARTBEAT(20000),
+    
+    /**
+     * client return message
+     */
+    CLIENT_HEARTBEAT(20001);
 
     private int code;
 

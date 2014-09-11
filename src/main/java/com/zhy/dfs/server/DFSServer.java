@@ -2,7 +2,9 @@ package com.zhy.dfs.server;
 
 import java.io.ByteArrayOutputStream;
 import java.io.FileOutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.SocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.SelectionKey;
@@ -16,7 +18,9 @@ import java.util.List;
 import java.util.Timer;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.zhy.dfs.constants.Code;
 import com.zhy.dfs.file.File;
+import com.zhy.dfs.util.NumberUtils;
 import com.zhy.dfs.util.TemplateUtils;
 
 /**
@@ -30,7 +34,7 @@ public class DFSServer {
     /**
      * every five minutes
      */
-    public static final int TIME = 1000 * 60 * 5;
+    public static final int TIME = 1000 * 5;
 
     private static DFSServer server = null;
 
@@ -50,6 +54,18 @@ public class DFSServer {
      * replication channels
      */
     private ConcurrentHashMap<String, List<SocketChannel>> replicationChannels = new ConcurrentHashMap<String, List<SocketChannel>>();
+    
+    
+    /**
+     * current alive shared channels
+     */
+    private LinkedHashMap<String, SocketChannel> aliveSharedChannels = new LinkedHashMap<String, SocketChannel>();
+
+    /**
+     * current alive replication channels
+     */
+    private ConcurrentHashMap<String, List<SocketChannel>> aliveReplicationChannels = new ConcurrentHashMap<String, List<SocketChannel>>();
+
 
     /**
      * server host
@@ -65,7 +81,7 @@ public class DFSServer {
      * shards
      */
     private static int SHAREDS = 0;
-    
+
     private static final int MAX_SIZE = 10000;
 
     private DFSServer() {
@@ -80,11 +96,11 @@ public class DFSServer {
     }
 
     public static void main(String[] args) {
-        if(args != null && args.length > 0) {
+        if (args != null && args.length > 0) {
             SHAREDS = Integer.parseInt(args[0].replace("-shareds=", ""));
         }
         Timer timer = new Timer();
-        timer.schedule(new DFSObserver(), TIME);
+        timer.schedule(new DFSObserver(), 1000, TIME);
         DFSServer dfsServer = DFSServer.getInstance();
         try {
             dfsServer.init();
@@ -132,16 +148,16 @@ public class DFSServer {
                     } else {
                         List<String> sharedKeys = new ArrayList(sharedChannels.keySet());
                         if (replicationChannels.size() == 0) {
-                            
+
                             // hasn't a replication
                             List<SocketChannel> reList = new ArrayList<SocketChannel>();
                             reList.add(channel);
                             replicationChannels.put(sharedKeys.get(0), reList);
                         } else {
                             boolean allHasRepli = true;
-                            for(String sharedKey : sharedKeys) {
-                                if(!replicationChannels.containsKey(sharedKey)) {
-                                    
+                            for (String sharedKey : sharedKeys) {
+                                if (!replicationChannels.containsKey(sharedKey)) {
+
                                     // current shared has not replication
                                     allHasRepli = false;
                                     List<SocketChannel> reList = new ArrayList<SocketChannel>();
@@ -150,55 +166,109 @@ public class DFSServer {
                                     break;
                                 }
                             }
-                            
+
                             // all shared has replication
-                            if(allHasRepli) {
-                                
+                            if (allHasRepli) {
+
                                 // judge every replication size
                                 String smallSharedKey = "";
                                 int smallSize = MAX_SIZE;
-                                for(String sharedKey : sharedKeys) {
+                                for (String sharedKey : sharedKeys) {
                                     List<SocketChannel> chs = replicationChannels.get(sharedKey);
-                                    if(chs != null) {
-                                        if(chs.size() < smallSize) {
+                                    if (chs != null) {
+                                        if (chs.size() < smallSize) {
                                             smallSize = chs.size();
                                             smallSharedKey = sharedKey;
                                         }
                                     }
                                 }
                                 List<SocketChannel> chs = replicationChannels.get(smallSharedKey);
-                                if(chs != null) {
+                                if (chs != null) {
                                     chs.add(channel);
                                 }
                             }
                         }
                     }
                 } else if (key.isReadable()) {
-                    SocketChannel ch = (SocketChannel) key.channel();
-                    File file = receiveData(ch);
-                    write(file);
-
-                    // shard and replication
-                    int hashCode = file.hashCode();
-                    int shard = hashCode % sharedChannels.size();
-                    List<String> sharedKeys = new ArrayList(sharedChannels.keySet());
-                    String currentKey = sharedKeys.get(shard);
-                    SocketChannel channel = sharedChannels.get(currentKey);
-                    channel.register(selector, SelectionKey.OP_READ);
                     
-                    // send shared channel
-                    send(file, channel);
-                    
-                    // send the shared channel replication
-                    List<SocketChannel> replications = replicationChannels.get(currentKey);
-                    for(SocketChannel socketChannel : replications) {
-                        send(file, socketChannel);
-                    }
+                    dispatchHandler((SocketChannel) key.channel());
                 }
             }
         }
     }
 
+    /**
+     * handle the receive data
+     * 
+     * @see com.zhy.dfs.constants.Code
+     * 
+     * @param channel
+     */
+    private void dispatchHandler(SocketChannel channel) throws Exception {
+
+        // the code capacity 100 bytes
+        int capacity = 100;
+        byte[] fileBytes = new byte[100];
+        String code = "";
+        ByteBuffer buffer = ByteBuffer.allocate(capacity);
+        if (channel.read(buffer) > 0) {
+            buffer.flip();
+            buffer.get(fileBytes);
+            buffer.clear();
+        }
+        code = new String(fileBytes).trim();
+        if (NumberUtils.isInteger(code)) {
+
+            // is sign code
+            Code sign = Code.codeConvert(Integer.parseInt(code));
+            codeHandler(sign, channel);
+        } else {
+
+            // is file
+            File file = fileHandler(channel);
+            write(file);
+            
+            // shard and replication
+            int hashCode = file.hashCode();
+            int shard = hashCode % sharedChannels.size();
+            List<String> sharedKeys = new ArrayList(sharedChannels.keySet());
+            String currentKey = sharedKeys.get(shard);
+            SocketChannel currentChannel = sharedChannels.get(currentKey);
+            currentChannel.register(selector, SelectionKey.OP_READ);
+
+            // send shared channel
+            send(file, currentChannel);
+
+            // send the shared channel replication
+            List<SocketChannel> replications = replicationChannels.get(currentKey);
+            for (SocketChannel socketChannel : replications) {
+                send(file, socketChannel);
+            }
+        }
+
+    }
+
+    /**
+     * code handler
+     * 
+     * @param sign
+     * @param channel
+     */
+    private void codeHandler(Code sign, SocketChannel channel) throws Exception {
+        switch (sign) {
+        
+        // client return message
+        case CLIENT_HEARTBEAT:
+            // TODO control something 
+//            SocketAddress bb = channel.socket().getRemoteSocketAddress();
+            break;
+        case SERVER_ACCPECT_SUCCESS:
+            break;
+        default:
+            break;
+        }
+    }
+    
     /**
      * send file to shard
      * 
@@ -248,7 +318,7 @@ public class DFSServer {
      * @param channel
      * @throws Exception
      */
-    private File receiveData(SocketChannel channel) throws Exception {
+    private File fileHandler(SocketChannel channel) throws Exception {
 
         // sign the file name capacity 100 bytes
         int capacity = 100;
@@ -277,6 +347,44 @@ public class DFSServer {
         byteArrayOutputStream.close();
         byte[] byteArray = byteArrayOutputStream.toByteArray();
         return new File(fileName, contentLength, byteArray);
+    }
+    
+    /**
+     * send code
+     * 
+     * @param code
+     * @param channel
+     * @throws Exception
+     */
+    protected void write(Code code, SocketChannel channel) throws Exception {
+        String name = String.valueOf(code.getCode());
+        StringBuilder builder = new StringBuilder();
+        if (name.length() < 100) {
+            for (int i = 0; i < 100 - name.length(); i++) {
+                builder.append(" ");
+            }
+        }
+        name += builder.toString();
+        channel.write(ByteBuffer.wrap(name.getBytes()));
+        channel.configureBlocking(false);
+        channel.register(selector, SelectionKey.OP_READ);
+        
+    }
+
+    protected LinkedHashMap<String, SocketChannel> getSharedChannels() {
+        return sharedChannels;
+    }
+
+    protected void setSharedChannels(LinkedHashMap<String, SocketChannel> sharedChannels) {
+        this.sharedChannels = sharedChannels;
+    }
+
+    protected ConcurrentHashMap<String, List<SocketChannel>> getReplicationChannels() {
+        return replicationChannels;
+    }
+
+    protected void setReplicationChannels(ConcurrentHashMap<String, List<SocketChannel>> replicationChannels) {
+        this.replicationChannels = replicationChannels;
     }
 
 }

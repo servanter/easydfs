@@ -11,7 +11,9 @@ import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 
+import com.zhy.dfs.constants.Code;
 import com.zhy.dfs.file.File;
+import com.zhy.dfs.util.NumberUtils;
 import com.zhy.dfs.util.TemplateUtils;
 
 public class DFSClient {
@@ -19,12 +21,12 @@ public class DFSClient {
     private static SocketChannel channel;
 
     private static Selector selector;
-    
+
     private static String CLIENT_STORE_PATH;
 
     public static void main(String[] args) {
         try {
-            if(args == null || args.length == 0) {
+            if (args == null || args.length == 0) {
                 System.exit(0);
             }
             CLIENT_STORE_PATH = args[0];
@@ -33,7 +35,7 @@ public class DFSClient {
             clientHandleThread.init();
             new Thread(clientHandleThread).start();
             Thread.sleep(2000);
-            client.send("D:\\", "zoo.cfg", channel);
+//            client.send("D:\\", "zoo.cfg", channel);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -74,15 +76,76 @@ public class DFSClient {
                             channel.configureBlocking(false);
                             channel.register(selector, SelectionKey.OP_READ);
                         } else if (key.isReadable()) {
-                            
-                            // receive
-                            File file = receiveData((SocketChannel) key.channel());
-                            write(file);
+                            System.out.println(1111111111);
+                            dispatchHandler((SocketChannel) key.channel());
+
                         }
                     }
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
+            }
+        }
+
+        /**
+         * handle the receive data
+         * 
+         * @see com.zhy.dfs.constants.Code
+         * 
+         * @param channel
+         */
+        private void dispatchHandler(SocketChannel channel) throws Exception {
+
+            // the code capacity 100 bytes
+            int capacity = 100;
+            byte[] fileBytes = new byte[100];
+            String code = "";
+            ByteBuffer buffer = ByteBuffer.allocate(capacity);
+            if (channel.read(buffer) > 0) {
+                buffer.flip();
+                buffer.get(fileBytes);
+                buffer.clear();
+            }
+            code = new String(fileBytes).trim();
+            if (NumberUtils.isInteger(code)) {
+
+                // is sign code
+                Code sign = Code.codeConvert(Integer.parseInt(code));
+                codeHandler(sign, channel);
+            } else {
+
+                // is file
+                File file = fileHandler(channel);
+                write(file);
+            }
+
+        }
+
+        /**
+         * code handler
+         * 
+         * @param sign
+         * @param channel
+         */
+        private void codeHandler(Code sign, SocketChannel channel) throws Exception {
+            switch (sign) {
+            
+            // server monitor client
+            case SERVER_HEARTBEAT:
+                String name = String.valueOf(Code.CLIENT_HEARTBEAT.getCode());
+                StringBuilder builder = new StringBuilder();
+                if (name.length() < 100) {
+                    for (int i = 0; i < 100 - name.length(); i++) {
+                        builder.append(" ");
+                    }
+                }
+                name += builder.toString();
+                channel.write(ByteBuffer.wrap(String.valueOf(name).getBytes()));
+                break;
+            case SERVER_ACCPECT_SUCCESS:
+                break;
+            default:
+                break;
             }
         }
 
@@ -97,7 +160,7 @@ public class DFSClient {
             ByteBuffer buffer = ByteBuffer.wrap(file.getContents());
             fileChannel.write(buffer);
             fileChannel.close();
-//            fos.close();
+            fos.close();
         }
 
         /**
@@ -106,7 +169,7 @@ public class DFSClient {
          * @param channel
          * @throws Exception
          */
-        private File receiveData(SocketChannel channel) throws Exception {
+        private File fileHandler(SocketChannel channel) throws Exception {
 
             // sign the file name capacity 100 bytes
             int capacity = 100;
@@ -131,7 +194,7 @@ public class DFSClient {
                 byteArrayOutputStream.write(dataBuffer.array());
                 dataBuffer.clear();
             }
-//            channel.close();
+            // channel.close();
             byteArrayOutputStream.close();
             return new File(fileName, contentLength, byteArrayOutputStream.toByteArray());
         }
@@ -162,7 +225,6 @@ public class DFSClient {
             buffer.flip();
             buffer.limit(size);
             byteArrayOutputStream.write(buffer.array());
-//            channel.write(buffer);
             buffer.clear();
         }
         byte[] byteArray = byteArrayOutputStream.toByteArray();
@@ -171,11 +233,11 @@ public class DFSClient {
             data[i] = fileNameBytes[i];
         }
         int index = 0;
-        for(int i = fileNameBytes.length; i < data.length; i++) {
+        for (int i = fileNameBytes.length; i < data.length; i++) {
             data[i] = byteArray[index];
             index++;
         }
-        
+
         byteArrayOutputStream.close();
         channel.write(ByteBuffer.wrap(data));
     }
