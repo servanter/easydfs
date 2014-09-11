@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.Timer;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -36,7 +37,7 @@ public class DFSServer {
     /**
      * every five minutes
      */
-    public static final int TIME = 1000 * 2;
+    public static final int TIME = 1000 * 15;
 
     private static DFSServer server = null;
 
@@ -101,7 +102,7 @@ public class DFSServer {
         }
         Timer timer = new Timer();
         
-        timer.schedule(new DFSObserver(), 5000, TIME);
+        timer.schedule(new DFSObserver(), 10000, TIME);
         DFSServer dfsServer = DFSServer.getInstance();
         try {
             dfsServer.init();
@@ -134,15 +135,15 @@ public class DFSServer {
             Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
             while (keys.hasNext()) {
                 SelectionKey key = keys.next();
-                keys.remove();
                 if (key.isAcceptable()) {
+                    keys.remove();
 
                     // client request to accpect
                     ServerSocketChannel serverSocketChannel = (ServerSocketChannel) key.channel();
                     SocketChannel channel = serverSocketChannel.accept();
                     channel.configureBlocking(false);
                     channel.register(selector, SelectionKey.OP_READ);
-
+                    key.interestOps(SelectionKey.OP_ACCEPT);
                     // judge current connected channels is saturated
                     if (sharedChannels.size() < SHAREDS) {
                         String k = channel.socket().getRemoteSocketAddress().toString();
@@ -194,6 +195,18 @@ public class DFSServer {
                 } else if (key.isReadable()) {
 
                     dispatchHandler((SocketChannel) key.channel());
+                    key.interestOps(SelectionKey.OP_READ);
+                } else if (key.isWritable()) {
+                    System.out.println("write");
+//                    key.interestOps(SelectionKey.OP_READ);
+//                    SocketChannel channel = (SocketChannel) key.channel();
+//                    channel.register(selector, SelectionKey.OP_READ);
+//                    System.out.println("=============send");  
+//                        //取消键后仍可以得到键的通道  
+//                    dispatchHandler((SocketChannel) key.channel());
+//                    key.cancel();  
+//                    key.channel().close();  
+                    
                 }
             }
         }
@@ -220,11 +233,11 @@ public class DFSServer {
         }
         code = new String(fileBytes).trim();
         if(code.length() > 0) {
+            System.out.println("code=" + code);
             if (NumberUtils.isInteger(code)) {
                 
                 // is sign code
                 Code sign = Code.codeConvert(Integer.parseInt(code));
-                System.out.println("code=" + sign.getCode());
                 codeHandler(sign, channel);
             } else {
                 
@@ -266,19 +279,19 @@ public class DFSServer {
         // client return message
         case CLIENT_HEARTBEAT:
             // in alive channels
-            String key = channel.socket().getRemoteSocketAddress().toString();
-            if (sharedChannels.containsKey(key)) {
-                aliveSharedChannels.put(key, channel);
-            } else if (replicationChannels.containsKey(key)) {
-                List<SocketChannel> chs = aliveReplicationChannels.get(key);
-                if (chs == null) {
-                    chs = new ArrayList<SocketChannel>();
-                }
-                chs.add(channel);
-                aliveReplicationChannels.put(key, chs);
-            } else {
-                channel.close();
-            }
+//            String key = channel.socket().getRemoteSocketAddress().toString();
+//            if (sharedChannels.containsKey(key)) {
+//                aliveSharedChannels.put(key, channel);
+//            } else if (replicationChannels.containsKey(key)) {
+//                List<SocketChannel> chs = aliveReplicationChannels.get(key);
+//                if (chs == null) {
+//                    chs = new ArrayList<SocketChannel>();
+//                }
+//                chs.add(channel);
+//                aliveReplicationChannels.put(key, chs);
+//            } else {
+//                channel.close();
+//            }
             
             
             
@@ -387,7 +400,16 @@ public class DFSServer {
             }
         }
         name += builder.toString();
-        channel.write(ByteBuffer.wrap(name.getBytes()));
+        Set<SelectionKey> ks = selector.keys();
+        for(SelectionKey k : ks) {
+            if(k.channel() instanceof SocketChannel) {
+                k.interestOps(SelectionKey.OP_WRITE);
+                SocketChannel chl = (SocketChannel) k.channel();
+                System.out.println(chl.socket().getRemoteSocketAddress().toString());
+                
+                chl.write(ByteBuffer.wrap(name.getBytes()));
+            }
+        }
 
     }
 
@@ -436,5 +458,32 @@ public class DFSServer {
             }
         }
     }
+    
+    protected void boardCast() throws Exception {
+        String name = String.valueOf(Code.SERVER_HEARTBEAT.getCode());
+        StringBuilder builder = new StringBuilder();
+        if (name.length() < 100) {
+            for (int i = 0; i < 100 - name.length(); i++) {
+                builder.append(" ");
+            }
+        }
+        name = name + builder.toString();
+        Set<SelectionKey> ks = selector.keys();
+        for(SelectionKey k : ks) {
+            if(k.channel() instanceof SocketChannel) {
+                k.interestOps(SelectionKey.OP_READ);
+                SocketChannel chl = (SocketChannel) k.channel();
+                System.out.println(chl.socket().getRemoteSocketAddress().toString());
+                chl.write(ByteBuffer.wrap(name.getBytes()));
+            }
+        }
+    }
 
+    protected Selector getSelector() {
+        return selector;
+    }
+
+    protected void setSelector(Selector selector) {
+        this.selector = selector;
+    }
 }
