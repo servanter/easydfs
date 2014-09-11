@@ -33,7 +33,7 @@ public class DFSClient {
             clientHandleThread.init();
             new Thread(clientHandleThread).start();
             Thread.sleep(2000);
-            client.send("D:\\", "aaa.txt", channel);
+            client.send("D:\\", "zoo.cfg", channel);
         } catch (Exception e) {
             e.printStackTrace();
         }

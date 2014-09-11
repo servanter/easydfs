@@ -1,9 +1,50 @@
 package com.zhy.dfs.constants;
 
-public class Code {
+/**
+ * transfer code
+ * 
+ * @author zhanghongyan
+ * 
+ */
+public enum Code {
+
+    /**
+     * is not a code
+     */
+    NULL_SIGH_CODE(99999),
 
     /**
      * server accpect to client successfuly
      */
-    public static final String SERVER_ACCPECT_SUCCESS = "10000";
+    SERVER_ACCPECT_SUCCESS(10000),
+
+    /**
+     * server monitor client
+     */
+    HEARTBEAT(20000);
+
+    private int code;
+
+    public int getCode() {
+        return code;
+    }
+
+    public void setCode(int code) {
+        this.code = code;
+    }
+
+    private Code(int code) {
+        this.code = code;
+    }
+
+    public static Code codeConvert(int code) {
+        Code[] codes = Code.values();
+        for (Code c : codes) {
+            if (code == c.getCode()) {
+                return c;
+            }
+        }
+        return Code.NULL_SIGH_CODE;
+    }
+
 }
