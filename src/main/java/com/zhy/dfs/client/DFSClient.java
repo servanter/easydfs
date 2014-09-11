@@ -76,7 +76,6 @@ public class DFSClient {
                             channel.configureBlocking(false);
                             channel.register(selector, SelectionKey.OP_READ);
                         } else if (key.isReadable()) {
-                            System.out.println(1111111111);
                             dispatchHandler((SocketChannel) key.channel());
 
                         }
@@ -107,16 +106,20 @@ public class DFSClient {
                 buffer.clear();
             }
             code = new String(fileBytes).trim();
-            if (NumberUtils.isInteger(code)) {
-
-                // is sign code
-                Code sign = Code.codeConvert(Integer.parseInt(code));
-                codeHandler(sign, channel);
-            } else {
-
-                // is file
-                File file = fileHandler(channel);
-                write(file);
+            if(code.length() > 0) {
+                System.out.println("code=" + code);
+                
+                if (NumberUtils.isInteger(code)) {
+                    
+                    // is sign code
+                    Code sign = Code.codeConvert(Integer.parseInt(code));
+                    codeHandler(sign, channel);
+                } else {
+                    
+                    // is file
+                    File file = fileHandler(channel);
+                    write(file);
+                }
             }
 
         }
@@ -159,7 +162,7 @@ public class DFSClient {
             FileChannel fileChannel = fos.getChannel();
             ByteBuffer buffer = ByteBuffer.wrap(file.getContents());
             fileChannel.write(buffer);
-            fileChannel.close();
+//            fileChannel.close();
             fos.close();
         }
 

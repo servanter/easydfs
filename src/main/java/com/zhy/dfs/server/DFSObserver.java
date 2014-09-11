@@ -19,7 +19,8 @@ public class DFSObserver extends TimerTask {
 
     @Override
     public void run() {
-        System.out.println(11111);
+        System.out.println("run");
+        DFSServer.getInstance().clearAlivedChannels();
         LinkedHashMap<String, SocketChannel> sharedChannels = DFSServer.getInstance().getSharedChannels();
         ConcurrentHashMap<String, List<SocketChannel>> replications = DFSServer.getInstance().getReplicationChannels();
         List<String> sharedKeys = new ArrayList(sharedChannels.keySet());
@@ -43,6 +44,16 @@ public class DFSObserver extends TimerTask {
                 }
             }
         }
+//        try {
+//            Thread.sleep(1000 * 10);
+//            DFSServer.getInstance().alivedToUsed();
+//        } catch (InterruptedException e) {
+//            e.printStackTrace();
+//        }
+    }
+    
+    public void aaa() {
+        run();
     }
 
 }
