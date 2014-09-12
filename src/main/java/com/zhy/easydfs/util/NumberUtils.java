@@ -1,4 +1,4 @@
-package com.zhy.dfs.util;
+package com.zhy.easydfs.util;
 
 /**
  * number utils

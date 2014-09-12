@@ -1,4 +1,4 @@
-package com.zhy.dfs.client;
+package com.zhy.easydfs.client;
 
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
@@ -11,10 +11,10 @@ import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.Iterator;
 
-import com.zhy.dfs.constants.Code;
-import com.zhy.dfs.file.File;
-import com.zhy.dfs.util.NumberUtils;
-import com.zhy.dfs.util.TemplateUtils;
+import com.zhy.easydfs.constants.Code;
+import com.zhy.easydfs.file.File;
+import com.zhy.easydfs.util.NumberUtils;
+import com.zhy.easydfs.util.TemplateUtils;
 
 public class DFSClient {
 
@@ -91,7 +91,7 @@ public class DFSClient {
         /**
          * handle the receive data
          * 
-         * @see com.zhy.dfs.constants.Code
+         * @see com.zhy.easydfs.constants.Code
          * 
          * @param channel
          */

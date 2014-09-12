@@ -1,4 +1,4 @@
-package com.zhy.dfs.server;
+package com.zhy.easydfs.server;
 
 import java.io.ByteArrayOutputStream;
 import java.io.FileOutputStream;
@@ -20,10 +20,10 @@ import java.util.logging.Logger;
 
 import javax.xml.ws.handler.MessageContext.Scope;
 
-import com.zhy.dfs.constants.Code;
-import com.zhy.dfs.file.File;
-import com.zhy.dfs.util.NumberUtils;
-import com.zhy.dfs.util.TemplateUtils;
+import com.zhy.easydfs.constants.Code;
+import com.zhy.easydfs.file.File;
+import com.zhy.easydfs.util.NumberUtils;
+import com.zhy.easydfs.util.TemplateUtils;
 
 /**
  * server
@@ -211,7 +211,7 @@ public class DFSServer {
     /**
      * handle the receive data
      * 
-     * @see com.zhy.dfs.constants.Code
+     * @see com.zhy.easydfs.constants.Code
      * 
      * @param channel
      */

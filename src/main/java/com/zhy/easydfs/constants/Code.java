@@ -1,4 +1,4 @@
-package com.zhy.dfs.constants;
+package com.zhy.easydfs.constants;
 
 /**
  * transfer code
