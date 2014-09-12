@@ -65,8 +65,8 @@ public class DFSClient {
                     Iterator<SelectionKey> it = selector.selectedKeys().iterator();
                     while (it.hasNext()) {
                         SelectionKey key = it.next();
-                        it.remove();
                         if (key.isConnectable()) {
+                            it.remove();
 
                             // connection the server
                             channel = (SocketChannel) key.channel();
@@ -77,9 +77,8 @@ public class DFSClient {
                             codeHandler(Code.SERVER_HEARTBEAT, channel);
                             channel.register(selector, SelectionKey.OP_READ);
                         } else if (key.isReadable()) {
-                            key.interestOps(SelectionKey.OP_READ);
                             dispatchHandler((SocketChannel) key.channel());
-
+                            key.interestOps(SelectionKey.OP_READ);
                         }
                     }
                 } catch (Exception e) {

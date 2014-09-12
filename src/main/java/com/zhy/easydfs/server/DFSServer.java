@@ -198,11 +198,10 @@ public class DFSServer {
                         }
                     }
                 } else if (key.isReadable()) {
-
                     dispatchHandler((SocketChannel) key.channel());
                     key.interestOps(SelectionKey.OP_READ);
-                } else if (key.isWritable()) {
-                    System.out.println("write+++++++++++++++++++++++++++");
+                } else {
+                    System.out.println("cccccccccccccccccccccccccccc");
                 }
             }
         }
@@ -216,7 +215,6 @@ public class DFSServer {
      * @param channel
      */
     private void dispatchHandler(SocketChannel channel) throws Exception {
-
         // the code capacity 100 bytes
         int capacity = 100;
         byte[] fileBytes = new byte[100];
@@ -474,6 +472,14 @@ public class DFSServer {
             }
         }
         text = text + builder.toString();
+        
+        List<SelectionKey> selects = new ArrayList<SelectionKey>(selector.keys());
+        for(SelectionKey key: selects) {
+            if(key.channel() instanceof SocketChannel) {
+                key.interestOps(SelectionKey.OP_READ);
+            }
+        }
+        
         List<String> sharedKeys = new ArrayList(sharedChannels.keySet());
         for (String sharedKey : sharedKeys) {
             SocketChannel sharedChannel = sharedChannels.get(sharedKey);
