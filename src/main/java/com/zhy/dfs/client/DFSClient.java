@@ -74,8 +74,10 @@ public class DFSClient {
                                 channel.finishConnect();
                             }
                             channel.configureBlocking(false);
+                            codeHandler(Code.SERVER_HEARTBEAT, channel);
                             channel.register(selector, SelectionKey.OP_READ);
                         } else if (key.isReadable()) {
+                            key.interestOps(SelectionKey.OP_READ);
                             dispatchHandler((SocketChannel) key.channel());
 
                         }
@@ -162,7 +164,7 @@ public class DFSClient {
             FileChannel fileChannel = fos.getChannel();
             ByteBuffer buffer = ByteBuffer.wrap(file.getContents());
             fileChannel.write(buffer);
-//            fileChannel.close();
+            fileChannel.close();
             fos.close();
         }
 
