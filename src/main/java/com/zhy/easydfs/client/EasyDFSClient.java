@@ -16,7 +16,7 @@ import com.zhy.easydfs.file.File;
 import com.zhy.easydfs.util.NumberUtils;
 import com.zhy.easydfs.util.TemplateUtils;
 
-public class DFSClient {
+public class EasyDFSClient {
 
     private static SocketChannel channel;
 
@@ -30,7 +30,7 @@ public class DFSClient {
                 System.exit(0);
             }
             CLIENT_STORE_PATH = args[0];
-            DFSClient client = new DFSClient();
+            EasyDFSClient client = new EasyDFSClient();
             DFSClientHandleThread clientHandleThread = new DFSClientHandleThread();
             clientHandleThread.init();
             new Thread(clientHandleThread).start();

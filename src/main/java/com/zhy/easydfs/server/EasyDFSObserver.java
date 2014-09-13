@@ -15,20 +15,20 @@ import com.zhy.easydfs.constants.Code;
  * @author zhanghongyan
  * 
  */
-public class DFSObserver extends TimerTask {
+public class EasyDFSObserver extends TimerTask {
 
     @Override
     public void run() {
         System.out.println("run");
         try {
-            DFSServer.getInstance().boardCast();
+            EasyDFSServer.getInstance().boardCast();
         } catch (Exception e) {
             e.printStackTrace();
         }
         try {
             Thread.sleep(1000 * 5);
             System.out.println("sleep over");
-            DFSServer.getInstance().alivedToUsed();
+            EasyDFSServer.getInstance().alivedToUsed();
         } catch (InterruptedException e) {
             e.printStackTrace();
         }

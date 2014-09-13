@@ -31,14 +31,14 @@ import com.zhy.easydfs.util.TemplateUtils;
  * @author zhanghongyan
  * 
  */
-public class DFSServer {
+public class EasyDFSServer {
 
     /**
      * every five minutes
      */
     public static final int TIME = 1000 * 10;
 
-    private static DFSServer server = null;
+    private static EasyDFSServer server = null;
 
     private Selector selector;
 
@@ -89,13 +89,13 @@ public class DFSServer {
 
     private static final int MAX_SIZE = 10000;
 
-    private DFSServer() {
+    private EasyDFSServer() {
 
     }
 
-    public static synchronized DFSServer getInstance() {
+    public static synchronized EasyDFSServer getInstance() {
         if (server == null) {
-            server = new DFSServer();
+            server = new EasyDFSServer();
         }
         return server;
     }
@@ -106,8 +106,8 @@ public class DFSServer {
         }
         Timer timer = new Timer();
 
-         timer.schedule(new DFSObserver(), 5000, TIME);
-        DFSServer dfsServer = DFSServer.getInstance();
+         timer.schedule(new EasyDFSObserver(), 5000, TIME);
+        EasyDFSServer dfsServer = EasyDFSServer.getInstance();
         try {
             dfsServer.init();
             dfsServer.listen();
