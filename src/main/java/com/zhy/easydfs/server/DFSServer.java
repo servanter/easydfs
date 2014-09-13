@@ -106,7 +106,7 @@ public class DFSServer {
         }
         Timer timer = new Timer();
 
-        timer.schedule(new DFSObserver(), 5000, TIME);
+         timer.schedule(new DFSObserver(), 5000, TIME);
         DFSServer dfsServer = DFSServer.getInstance();
         try {
             dfsServer.init();
@@ -147,8 +147,9 @@ public class DFSServer {
                     SocketChannel channel = serverSocketChannel.accept();
                     channel.configureBlocking(false);
                     channel.register(selector, SelectionKey.OP_READ);
+                    //key.interestOps(SelectionKey.OP_ACCEPT);
                     System.out.println("server receive client request " + channel.socket().getRemoteSocketAddress().toString());
-                    
+
                     // judge current connected channels is saturated
                     if (sharedChannels.size() < SHAREDS) {
                         String k = channel.socket().getRemoteSocketAddress().toString();
@@ -198,8 +199,12 @@ public class DFSServer {
                         }
                     }
                 } else if (key.isReadable()) {
-                    dispatchHandler((SocketChannel) key.channel());
-                    key.interestOps(SelectionKey.OP_READ);
+                    try {
+                        dispatchHandler((SocketChannel) key.channel());
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        key.cancel();
+                    }
                 } else {
                     System.out.println("cccccccccccccccccccccccccccc");
                 }
@@ -215,49 +220,55 @@ public class DFSServer {
      * @param channel
      */
     private void dispatchHandler(SocketChannel channel) throws Exception {
-        // the code capacity 100 bytes
-        int capacity = 100;
-        byte[] fileBytes = new byte[100];
-        String code = "";
-        ByteBuffer buffer = ByteBuffer.allocate(capacity);
-        if (channel.read(buffer) > 0) {
-            buffer.flip();
-            buffer.get(fileBytes);
-            buffer.clear();
-        }
-        code = new String(fileBytes).trim();
-        System.out.println("c=" + code);
-        if (code.length() > 0) {
-            System.out.println("code==================" + code);
-            if (NumberUtils.isInteger(code)) {
-
-                // is sign code
-                Code sign = Code.codeConvert(Integer.parseInt(code));
-                codeHandler(sign, channel);
-            } else {
-
-                // is file
-                File file = fileHandler(channel);
-                write(file);
-
-                // shard and replication
-                int hashCode = file.hashCode();
-                int shard = hashCode % sharedChannels.size();
-                List<String> sharedKeys = new ArrayList(sharedChannels.keySet());
-                String currentKey = sharedKeys.get(shard);
-                SocketChannel currentChannel = sharedChannels.get(currentKey);
-                currentChannel.register(selector, SelectionKey.OP_READ);
-
-                // send shared channel
-                send(file, currentChannel);
-
-                // send the shared channel replication
-                List<SocketChannel> replications = replicationChannels.get(currentKey);
-                for (SocketChannel socketChannel : replications) {
-                    send(file, socketChannel);
-                }
+        try {
+            
+            // the code capacity 100 bytes
+            int capacity = 100;
+            byte[] fileBytes = new byte[100];
+            String code = "";
+            ByteBuffer buffer = ByteBuffer.allocate(capacity);
+            if (channel.read(buffer) > 0) {
+                buffer.flip();
+                buffer.get(fileBytes);
+                buffer.clear();
             }
-
+            code = new String(fileBytes).trim();
+            System.out.println("c=" + code);
+            if (code.length() > 0) {
+                System.out.println("code==================" + code);
+                if (NumberUtils.isInteger(code)) {
+                    
+                    // is sign code
+                    Code sign = Code.codeConvert(Integer.parseInt(code));
+                    codeHandler(sign, channel);
+                } else {
+                    
+                    // is file
+                    File file = fileHandler(channel);
+                    write(file);
+                    
+                    // shard and replication
+                    int hashCode = file.hashCode();
+                    int shard = hashCode % sharedChannels.size();
+                    List<String> sharedKeys = new ArrayList(sharedChannels.keySet());
+                    String currentKey = sharedKeys.get(shard);
+                    SocketChannel currentChannel = sharedChannels.get(currentKey);
+                    currentChannel.register(selector, SelectionKey.OP_READ);
+                    
+                    // send shared channel
+                    send(file, currentChannel);
+                    
+                    // send the shared channel replication
+                    List<SocketChannel> replications = replicationChannels.get(currentKey);
+                    for (SocketChannel socketChannel : replications) {
+                        send(file, socketChannel);
+                    }
+                }
+                
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            throw new Exception(e);
         }
 
     }
@@ -404,26 +415,24 @@ public class DFSServer {
             }
         }
         System.out.println("current shareds size:" + sharedChannels.size());
-        
-        
-        
+
         List<String> ks = new ArrayList(replicationChannels.keySet());
         List<SocketChannel> repliChannels = new ArrayList(aliveReplicationChannels.values());
         Map<String, SocketChannel> tempMap = new LinkedHashMap<String, SocketChannel>();
-        for(SocketChannel channel : repliChannels) {
+        for (SocketChannel channel : repliChannels) {
             tempMap.put(channel.socket().getRemoteSocketAddress().toString(), channel);
         }
-        for(String key : ks ) {
-            if(!tempMap.containsKey(key)) {
+        for (String key : ks) {
+            if (!tempMap.containsKey(key)) {
                 if (badChannels.containsKey(key)) {
                     int badConnectionCount = badChannels.get(key) + 1;
                     if (badConnectionCount >= 3) {
                         Iterator<String> kk = replicationChannels.keySet().iterator();
-                        while(kk.hasNext()) {
+                        while (kk.hasNext()) {
                             String k = kk.next();
                             List<SocketChannel> channels = replicationChannels.get(k);
-                            for(SocketChannel chl : channels) {
-                                if(chl.socket().getRemoteSocketAddress().toString().equals(key)) {
+                            for (SocketChannel chl : channels) {
+                                if (chl.socket().getRemoteSocketAddress().toString().equals(key)) {
                                     channels.remove(chl);
                                     break;
                                 }
@@ -439,22 +448,8 @@ public class DFSServer {
                 }
             }
         }
-        
-        System.out.println("replication size:" + ks.size());
-        // while (keys.hasNext()) {
-        // String key = keys.next();
-        // System.out.println(key);
-        // }
 
-        // while (ks.hasNext()) {
-        // String key = ks.next();
-        // List<SocketChannel> channels = replicationChannels.get(key);
-        // if (channels != null) {
-        // for (SocketChannel c : channels) {
-        // System.out.println(c.socket().getRemoteSocketAddress().toString());
-        // }
-        // }
-        // }
+        System.out.println("replication size:" + ks.size());
         clearAlivedChannels();
     }
 
@@ -472,14 +467,14 @@ public class DFSServer {
             }
         }
         text = text + builder.toString();
-        
+
         List<SelectionKey> selects = new ArrayList<SelectionKey>(selector.keys());
-        for(SelectionKey key: selects) {
-            if(key.channel() instanceof SocketChannel) {
+        for (SelectionKey key : selects) {
+            if (key.channel() instanceof SocketChannel) {
                 key.interestOps(SelectionKey.OP_READ);
             }
         }
-        
+
         List<String> sharedKeys = new ArrayList(sharedChannels.keySet());
         for (String sharedKey : sharedKeys) {
             SocketChannel sharedChannel = sharedChannels.get(sharedKey);

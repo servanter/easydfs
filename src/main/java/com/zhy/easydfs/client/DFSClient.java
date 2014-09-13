@@ -65,8 +65,8 @@ public class DFSClient {
                     Iterator<SelectionKey> it = selector.selectedKeys().iterator();
                     while (it.hasNext()) {
                         SelectionKey key = it.next();
+                        it.remove();
                         if (key.isConnectable()) {
-                            it.remove();
 
                             // connection the server
                             channel = (SocketChannel) key.channel();
@@ -77,8 +77,12 @@ public class DFSClient {
                             codeHandler(Code.SERVER_HEARTBEAT, channel);
                             channel.register(selector, SelectionKey.OP_READ);
                         } else if (key.isReadable()) {
-                            dispatchHandler((SocketChannel) key.channel());
-                            key.interestOps(SelectionKey.OP_READ);
+                            try {
+                                dispatchHandler((SocketChannel) key.channel());
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                                key.cancel();
+                            }
                         }
                     }
                 } catch (Exception e) {
@@ -96,33 +100,37 @@ public class DFSClient {
          */
         private void dispatchHandler(SocketChannel channel) throws Exception {
 
-            // the code capacity 100 bytes
-            int capacity = 100;
-            byte[] fileBytes = new byte[100];
-            String code = "";
-            ByteBuffer buffer = ByteBuffer.allocate(capacity);
-            if (channel.read(buffer) > 0) {
-                buffer.flip();
-                buffer.get(fileBytes);
-                buffer.clear();
-            }
-            code = new String(fileBytes).trim();
-            if(code.length() > 0) {
-                System.out.println("code=" + code);
-                
-                if (NumberUtils.isInteger(code)) {
-                    
-                    // is sign code
-                    Code sign = Code.codeConvert(Integer.parseInt(code));
-                    codeHandler(sign, channel);
-                } else {
-                    
-                    // is file
-                    File file = fileHandler(channel);
-                    write(file);
+            try {
+             // the code capacity 100 bytes
+                int capacity = 100;
+                byte[] fileBytes = new byte[100];
+                String code = "";
+                ByteBuffer buffer = ByteBuffer.allocate(capacity);
+                if (channel.read(buffer) > 0) {
+                    buffer.flip();
+                    buffer.get(fileBytes);
+                    buffer.clear();
                 }
+                code = new String(fileBytes).trim();
+                if(code.length() > 0) {
+                    System.out.println("code=" + code);
+                    
+                    if (NumberUtils.isInteger(code)) {
+                        
+                        // is sign code
+                        Code sign = Code.codeConvert(Integer.parseInt(code));
+                        codeHandler(sign, channel);
+                    } else {
+                        
+                        // is file
+                        File file = fileHandler(channel);
+                        write(file);
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                throw new Exception(e);
             }
-
         }
 
         /**
