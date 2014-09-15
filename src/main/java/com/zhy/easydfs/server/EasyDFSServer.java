@@ -115,7 +115,7 @@ public class EasyDFSServer {
         }
         Timer timer = new Timer();
 
-         timer.schedule(new EasyDFSObserver(), 5000*6, TIME);
+//         timer.schedule(new EasyDFSObserver(), 5000*6, TIME);
         EasyDFSServer dfsServer = EasyDFSServer.getInstance();
         try {
             dfsServer.init();
@@ -164,7 +164,20 @@ public class EasyDFSServer {
                     // channel.close();
                 } else if (key.isReadable()) {
                     try {
-                        dispatchHandler(key);
+                        SocketChannel c = (SocketChannel) key.channel();
+                        ByteBuffer buffer = ByteBuffer.allocate(3);// 创建1024字节的缓冲
+                        byte[] a = new byte[3];
+                        
+                        while ( c.read(buffer) > 0) {
+                            buffer.flip();
+                            buffer.get(a);
+                            System.out.println(new String(a));
+                            // 使用Charset.decode方法将字节转换为字符串
+                            buffer.clear();
+                        }
+                        c.write(ByteBuffer.wrap("aab".getBytes()));
+                         c.close();
+//                        dispatchHandler(key);
                     } catch (Exception e) {
                         e.printStackTrace();
                         key.cancel();

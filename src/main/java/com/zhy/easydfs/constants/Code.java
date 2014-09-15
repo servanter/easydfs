@@ -37,7 +37,17 @@ public enum Code {
     /**
      * request download
      */
-    OPT_DOWNLOAD(30001);
+    OPT_DOWNLOAD(30001),
+    
+    /**
+     * request upload
+     */
+    OPT_UPLOAD(30101),
+    
+    /**
+     * result success
+     */
+    OPT_UPLOAD_SUCCESS(30102);
 
     private int code;
 
