@@ -9,6 +9,7 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
+import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -83,6 +84,11 @@ public class EasyDFSServer {
     private static int SERVER_PORT = Integer.parseInt(TemplateUtils.getMessage("server.port"));
 
     /**
+     * server save folder
+     */
+    private static String SERVER_FOLDER;
+
+    /**
      * shards
      */
     private static int SHAREDS = 0;
@@ -104,9 +110,12 @@ public class EasyDFSServer {
         if (args != null && args.length > 0) {
             SHAREDS = Integer.parseInt(args[0].replace("-shareds=", ""));
         }
+        if (args != null && args.length > 0) {
+            SERVER_FOLDER = args[1].replace("-folder=", "");
+        }
         Timer timer = new Timer();
 
-         timer.schedule(new EasyDFSObserver(), 5000, TIME);
+         timer.schedule(new EasyDFSObserver(), 5000*6, TIME);
         EasyDFSServer dfsServer = EasyDFSServer.getInstance();
         try {
             dfsServer.init();
@@ -147,60 +156,15 @@ public class EasyDFSServer {
                     SocketChannel channel = serverSocketChannel.accept();
                     channel.configureBlocking(false);
                     channel.register(selector, SelectionKey.OP_READ);
-                    //key.interestOps(SelectionKey.OP_ACCEPT);
                     System.out.println("server receive client request " + channel.socket().getRemoteSocketAddress().toString());
 
-                    // judge current connected channels is saturated
-                    if (sharedChannels.size() < SHAREDS) {
-                        String k = channel.socket().getRemoteSocketAddress().toString();
-                        sharedChannels.put(k, channel);
-                    } else {
-                        List<String> sharedKeys = new ArrayList(sharedChannels.keySet());
-                        if (replicationChannels.size() == 0) {
-
-                            // hasn't a replication
-                            List<SocketChannel> reList = new ArrayList<SocketChannel>();
-                            reList.add(channel);
-                            replicationChannels.put(sharedKeys.get(0), reList);
-                        } else {
-                            boolean allHasRepli = true;
-                            for (String sharedKey : sharedKeys) {
-                                if (!replicationChannels.containsKey(sharedKey)) {
-
-                                    // current shared has not replication
-                                    allHasRepli = false;
-                                    List<SocketChannel> reList = new ArrayList<SocketChannel>();
-                                    reList.add(channel);
-                                    replicationChannels.put(sharedKey, reList);
-                                    break;
-                                }
-                            }
-
-                            // all shared has replication
-                            if (allHasRepli) {
-
-                                // judge every replication size
-                                String smallSharedKey = "";
-                                int smallSize = MAX_SIZE;
-                                for (String sharedKey : sharedKeys) {
-                                    List<SocketChannel> chs = replicationChannels.get(sharedKey);
-                                    if (chs != null) {
-                                        if (chs.size() < smallSize) {
-                                            smallSize = chs.size();
-                                            smallSharedKey = sharedKey;
-                                        }
-                                    }
-                                }
-                                List<SocketChannel> chs = replicationChannels.get(smallSharedKey);
-                                if (chs != null) {
-                                    chs.add(channel);
-                                }
-                            }
-                        }
-                    }
+                    // when client request to download file, write file and close the channel
+                    // TODO
+                    // channel.write(ByteBuffer.wrap("aab".getBytes()));
+                    // channel.close();
                 } else if (key.isReadable()) {
                     try {
-                        dispatchHandler((SocketChannel) key.channel());
+                        dispatchHandler(key);
                     } catch (Exception e) {
                         e.printStackTrace();
                         key.cancel();
@@ -213,15 +177,74 @@ public class EasyDFSServer {
     }
 
     /**
+     * add channel in shared or replication
+     * 
+     * @param channel
+     */
+    public void addChannel(SocketChannel channel) {
+
+        // judge current connected channels is saturated
+        if (sharedChannels.size() < SHAREDS) {
+            String k = channel.socket().getRemoteSocketAddress().toString();
+            sharedChannels.put(k, channel);
+        } else {
+            List<String> sharedKeys = new ArrayList(sharedChannels.keySet());
+            if (replicationChannels.size() == 0) {
+
+                // hasn't a replication
+                List<SocketChannel> reList = new ArrayList<SocketChannel>();
+                reList.add(channel);
+                replicationChannels.put(sharedKeys.get(0), reList);
+            } else {
+                boolean allHasRepli = true;
+                for (String sharedKey : sharedKeys) {
+                    if (!replicationChannels.containsKey(sharedKey)) {
+
+                        // current shared has not replication
+                        allHasRepli = false;
+                        List<SocketChannel> reList = new ArrayList<SocketChannel>();
+                        reList.add(channel);
+                        replicationChannels.put(sharedKey, reList);
+                        break;
+                    }
+                }
+
+                // all shared has replication
+                if (allHasRepli) {
+
+                    // judge every replication size
+                    String smallSharedKey = "";
+                    int smallSize = MAX_SIZE;
+                    for (String sharedKey : sharedKeys) {
+                        List<SocketChannel> chs = replicationChannels.get(sharedKey);
+                        if (chs != null) {
+                            if (chs.size() < smallSize) {
+                                smallSize = chs.size();
+                                smallSharedKey = sharedKey;
+                            }
+                        }
+                    }
+                    List<SocketChannel> chs = replicationChannels.get(smallSharedKey);
+                    if (chs != null) {
+                        chs.add(channel);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * handle the receive data
      * 
      * @see com.zhy.easydfs.constants.Code
      * 
      * @param channel
      */
-    private void dispatchHandler(SocketChannel channel) throws Exception {
+    private void dispatchHandler(SelectionKey key) throws Exception {
+        SocketChannel channel = (SocketChannel) key.channel();
+
         try {
-            
+
             // the code capacity 100 bytes
             int capacity = 100;
             byte[] fileBytes = new byte[100];
@@ -237,16 +260,16 @@ public class EasyDFSServer {
             if (code.length() > 0) {
                 System.out.println("code==================" + code);
                 if (NumberUtils.isInteger(code)) {
-                    
+
                     // is sign code
                     Code sign = Code.codeConvert(Integer.parseInt(code));
                     codeHandler(sign, channel);
                 } else {
-                    
+
                     // is file
-                    File file = fileHandler(channel);
-                    write(file);
-                    
+                    File file = fileHandler(code, channel);
+                    write(file, SERVER_FOLDER);
+
                     // shard and replication
                     int hashCode = file.hashCode();
                     int shard = hashCode % sharedChannels.size();
@@ -254,23 +277,46 @@ public class EasyDFSServer {
                     String currentKey = sharedKeys.get(shard);
                     SocketChannel currentChannel = sharedChannels.get(currentKey);
                     currentChannel.register(selector, SelectionKey.OP_READ);
-                    
+
+                    // create version
+                    File version = createVersionFile(file.getFileName(), currentKey);
+
+                    // send shared channel version
+                    // send(version, currentChannel);
+
                     // send shared channel
                     send(file, currentChannel);
-                    
+
                     // send the shared channel replication
                     List<SocketChannel> replications = replicationChannels.get(currentKey);
-                    for (SocketChannel socketChannel : replications) {
-                        send(file, socketChannel);
+                    if (replications != null) {
+                        for (SocketChannel socketChannel : replications) {
+                            send(file, socketChannel);
+                        }
                     }
                 }
-                
+
             }
         } catch (Exception e) {
             e.printStackTrace();
             throw new Exception(e);
         }
 
+    }
+
+    /**
+     * create version file
+     * 
+     * @param fileName
+     * @return
+     */
+    private File createVersionFile(String fileName, String shared) {
+        String time = String.valueOf(System.currentTimeMillis()).substring(0, 10);
+        File file = new File();
+        String content = "fileName:" + fileName + "\r\n" + "version:" + time;
+        file.setContents(content.getBytes());
+        file.setFileName("version");
+        return file;
     }
 
     /**
@@ -284,28 +330,54 @@ public class EasyDFSServer {
 
         // client return message
         case CLIENT_HEARTBEAT:
-            // in alive channels
-            String key = channel.socket().getRemoteSocketAddress().toString();
-            System.out.println("server receive " + key);
-            if (sharedChannels.containsKey(key)) {
-                aliveSharedChannels.put(key, channel);
-            } else if (replicationChannels.containsKey(key)) {
-                List<SocketChannel> chs = aliveReplicationChannels.get(key);
-                if (chs == null) {
-                    chs = new ArrayList<SocketChannel>();
-                }
-                chs.add(channel);
-                aliveReplicationChannels.put(key, chs);
-            } else {
-                System.out.println(key + " need close.");
-            }
 
+            // in alive channels
+            handlerAlive(channel);
             break;
-        case SERVER_ACCPECT_SUCCESS:
+        case SYSTEM_CHANNEL:
+
+            // as system channels
+            addChannel(channel);
+
+            // in alive channels
+            handlerAlive(channel);
             break;
         default:
             break;
         }
+    }
+
+    /**
+     * handle current alive channel
+     * 
+     * @param channel
+     */
+    private void handlerAlive(SocketChannel channel) {
+        List<String> replisKeys = new ArrayList<String>();
+        Iterator<List<SocketChannel>> scs = replicationChannels.values().iterator();
+        while (scs.hasNext()) {
+            List<SocketChannel> everys = scs.next();
+            for (SocketChannel c : everys) {
+                replisKeys.add(c.socket().getRemoteSocketAddress().toString());
+            }
+        }
+
+        // in alive channels
+        String key = channel.socket().getRemoteSocketAddress().toString();
+        System.out.println("server receive " + key);
+        if (sharedChannels.containsKey(key)) {
+            aliveSharedChannels.put(key, channel);
+        } else if (replisKeys.contains(key)) {
+            List<SocketChannel> chs = aliveReplicationChannels.get(key);
+            if (chs == null) {
+                chs = new ArrayList<SocketChannel>();
+            }
+            chs.add(channel);
+            aliveReplicationChannels.put(key, chs);
+        } else {
+            System.out.println(key + " need close.");
+        }
+
     }
 
     /**
@@ -342,8 +414,8 @@ public class EasyDFSServer {
      * 
      * @param file
      */
-    private void write(File file) throws Exception {
-        FileOutputStream fos = new FileOutputStream(new java.io.File(TemplateUtils.getMessage("server.file.path") + file.getFileName()));
+    private void write(File file, String folder) throws Exception {
+        FileOutputStream fos = new FileOutputStream(new java.io.File(folder + file.getFileName()));
         FileChannel fileChannel = fos.getChannel();
         ByteBuffer buffer = ByteBuffer.wrap(file.getContents());
         fileChannel.write(buffer);
@@ -357,20 +429,7 @@ public class EasyDFSServer {
      * @param channel
      * @throws Exception
      */
-    private File fileHandler(SocketChannel channel) throws Exception {
-
-        // sign the file name capacity 100 bytes
-        int capacity = 100;
-        byte[] fileBytes = new byte[100];
-        String fileName = "";
-        ByteBuffer buffer = ByteBuffer.allocate(capacity);
-        if (channel.read(buffer) > 0) {
-            buffer.flip();
-            buffer.get(fileBytes);
-            buffer.clear();
-        }
-        fileName = new String(fileBytes).trim();
-
+    private File fileHandler(String fileName, SocketChannel channel) throws Exception {
         ByteBuffer dataBuffer = ByteBuffer.allocate(1024);
         int contentLength = 0;
         int size = -1;
@@ -397,60 +456,74 @@ public class EasyDFSServer {
      * alive channels to used NOTICE: MUST wait the result receivce
      */
     protected synchronized void alivedToUsed() {
-        List<String> keys = new ArrayList(sharedChannels.keySet());
-        for (String key : keys) {
-            if (!aliveSharedChannels.containsKey(key)) {
-                if (badChannels.containsKey(key)) {
-                    int badConnectionCount = badChannels.get(key) + 1;
-                    if (badConnectionCount >= 3) {
-                        sharedChannels.remove(key);
-                    } else {
-                        badChannels.put(key, badConnectionCount);
-                        System.out.println("bad connection is " + key + " count :" + badConnectionCount);
-                    }
-                } else {
-                    badChannels.put(key, 1);
-                    System.out.println("bad connection is " + key + " count :1");
-                }
-            }
-        }
-        System.out.println("current shareds size:" + sharedChannels.size());
+        synchronized (serverChannel) {
 
-        List<String> ks = new ArrayList(replicationChannels.keySet());
-        List<SocketChannel> repliChannels = new ArrayList(aliveReplicationChannels.values());
-        Map<String, SocketChannel> tempMap = new LinkedHashMap<String, SocketChannel>();
-        for (SocketChannel channel : repliChannels) {
-            tempMap.put(channel.socket().getRemoteSocketAddress().toString(), channel);
-        }
-        for (String key : ks) {
-            if (!tempMap.containsKey(key)) {
-                if (badChannels.containsKey(key)) {
-                    int badConnectionCount = badChannels.get(key) + 1;
-                    if (badConnectionCount >= 3) {
-                        Iterator<String> kk = replicationChannels.keySet().iterator();
-                        while (kk.hasNext()) {
-                            String k = kk.next();
-                            List<SocketChannel> channels = replicationChannels.get(k);
-                            for (SocketChannel chl : channels) {
-                                if (chl.socket().getRemoteSocketAddress().toString().equals(key)) {
-                                    channels.remove(chl);
-                                    break;
-                                }
-                            }
+            List<String> keys = new ArrayList(sharedChannels.keySet());
+            for (String key : keys) {
+                if (!aliveSharedChannels.containsKey(key)) {
+                    if (badChannels.containsKey(key)) {
+                        int badConnectionCount = badChannels.get(key) + 1;
+                        if (badConnectionCount >= 3) {
+                            sharedChannels.remove(key);
+                        } else {
+                            badChannels.put(key, badConnectionCount);
+                            System.out.println("bad connection is " + key + " count :" + badConnectionCount);
                         }
                     } else {
-                        badChannels.put(key, badConnectionCount);
-                        System.out.println("bad connection is " + key + " count :" + badConnectionCount);
+                        badChannels.put(key, 1);
+                        System.out.println("bad connection is " + key + " count :1");
                     }
-                } else {
-                    badChannels.put(key, 1);
-                    System.out.println("bad connection is " + key + " count :1");
                 }
             }
-        }
+            System.out.println("current shareds size:" + sharedChannels.size());
 
-        System.out.println("replication size:" + ks.size());
-        clearAlivedChannels();
+            List<String> replisKeys = new ArrayList<String>();
+            Iterator<List<SocketChannel>> scs = replicationChannels.values().iterator();
+            while (scs.hasNext()) {
+                List<SocketChannel> everys = scs.next();
+                for (SocketChannel c : everys) {
+                    replisKeys.add(c.socket().getRemoteSocketAddress().toString());
+                }
+            }
+
+            Map<String, SocketChannel> tempMap = new LinkedHashMap<String, SocketChannel>();
+            Iterator<List<SocketChannel>> repliChannels = aliveReplicationChannels.values().iterator();
+            while (repliChannels.hasNext()) {
+                List<SocketChannel> rs = repliChannels.next();
+                for (SocketChannel channel : rs) {
+                    tempMap.put(channel.socket().getRemoteSocketAddress().toString(), channel);
+                }
+            }
+            for (String key : replisKeys) {
+                if (!tempMap.containsKey(key)) {
+                    if (badChannels.containsKey(key)) {
+                        int badConnectionCount = badChannels.get(key) + 1;
+                        if (badConnectionCount >= 3) {
+                            Iterator<String> kk = replicationChannels.keySet().iterator();
+                            while (kk.hasNext()) {
+                                String k = kk.next();
+                                List<SocketChannel> channels = replicationChannels.get(k);
+                                for (SocketChannel chl : channels) {
+                                    if (chl.socket().getRemoteSocketAddress().toString().equals(key)) {
+                                        channels.remove(chl);
+                                        break;
+                                    }
+                                }
+                            }
+                        } else {
+                            badChannels.put(key, badConnectionCount);
+                            System.out.println("bad connection is " + key + " count :" + badConnectionCount);
+                        }
+                    } else {
+                        badChannels.put(key, 1);
+                        System.out.println("bad connection is " + key + " count :1");
+                    }
+                }
+            }
+
+            System.out.println("replication size:" + replisKeys.size());
+            clearAlivedChannels();
+        }
     }
 
     /**

@@ -35,7 +35,7 @@ public class EasyDFSClient {
             clientHandleThread.init();
             new Thread(clientHandleThread).start();
             Thread.sleep(2000);
-//            client.send("D:\\", "zoo.cfg", channel);
+            client.send("D:\\", "car_info.js", channel);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -74,7 +74,7 @@ public class EasyDFSClient {
                                 channel.finishConnect();
                             }
                             channel.configureBlocking(false);
-                            codeHandler(Code.SERVER_HEARTBEAT, channel);
+                            codeHandler(Code.SYSTEM_CHANNEL, channel);
                             channel.register(selector, SelectionKey.OP_READ);
                         } else if (key.isReadable()) {
                             try {
@@ -123,7 +123,7 @@ public class EasyDFSClient {
                     } else {
                         
                         // is file
-                        File file = fileHandler(channel);
+                        File file = fileHandler(code, channel);
                         write(file);
                     }
                 }
@@ -154,7 +154,16 @@ public class EasyDFSClient {
                 name += builder.toString();
                 channel.write(ByteBuffer.wrap(String.valueOf(name).getBytes()));
                 break;
-            case SERVER_ACCPECT_SUCCESS:
+            case SYSTEM_CHANNEL:
+                name = String.valueOf(Code.SYSTEM_CHANNEL.getCode());
+                builder = new StringBuilder();
+                if (name.length() < 100) {
+                    for (int i = 0; i < 100 - name.length(); i++) {
+                        builder.append(" ");
+                    }
+                }
+                name += builder.toString();
+                channel.write(ByteBuffer.wrap(String.valueOf(name).getBytes()));
                 break;
             default:
                 break;
@@ -181,20 +190,7 @@ public class EasyDFSClient {
          * @param channel
          * @throws Exception
          */
-        private File fileHandler(SocketChannel channel) throws Exception {
-
-            // sign the file name capacity 100 bytes
-            int capacity = 100;
-            byte[] fileBytes = new byte[100];
-            String fileName = "";
-            ByteBuffer buffer = ByteBuffer.allocate(capacity);
-            if (channel.read(buffer) > 0) {
-                buffer.flip();
-                buffer.get(fileBytes);
-                buffer.clear();
-            }
-            fileName = new String(fileBytes).trim();
-
+        private File fileHandler(String fileName, SocketChannel channel) throws Exception {
             ByteBuffer dataBuffer = ByteBuffer.allocate(1024);
             int contentLength = 0;
             int size = -1;
@@ -206,9 +202,9 @@ public class EasyDFSClient {
                 byteArrayOutputStream.write(dataBuffer.array());
                 dataBuffer.clear();
             }
-            // channel.close();
+            byte[] dataArray = byteArrayOutputStream.toByteArray();
             byteArrayOutputStream.close();
-            return new File(fileName, contentLength, byteArrayOutputStream.toByteArray());
+            return new File(fileName, contentLength, dataArray);
         }
 
     }
@@ -250,8 +246,8 @@ public class EasyDFSClient {
             index++;
         }
 
-        byteArrayOutputStream.close();
         channel.write(ByteBuffer.wrap(data));
+        byteArrayOutputStream.close();
     }
 
 }

@@ -17,6 +17,12 @@ public enum Code {
      * server accpect to client successfuly
      */
     SERVER_ACCPECT_SUCCESS(10000),
+    
+    
+    /**
+     * As the system channel 
+     */
+    SYSTEM_CHANNEL(10100),
 
     /**
      * server monitor client
@@ -26,7 +32,12 @@ public enum Code {
     /**
      * client return message
      */
-    CLIENT_HEARTBEAT(20001);
+    CLIENT_HEARTBEAT(20001),
+    
+    /**
+     * request download
+     */
+    OPT_DOWNLOAD(30001);
 
     private int code;
 
