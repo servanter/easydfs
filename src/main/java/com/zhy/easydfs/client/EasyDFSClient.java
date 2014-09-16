@@ -229,7 +229,7 @@ public class EasyDFSClient {
             
             byte[] bytes = null;
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-            while ((size = channel.read(dataBuffer)) != -1) {
+            while ((size = channel.read(dataBuffer)) > 0) {
                 contentLength += size;
                 dataBuffer.flip();
 //                dataBuffer.limit(size);

@@ -431,7 +431,7 @@ public class EasyDFSServer {
         ByteBuffer buffer = ByteBuffer.wrap(data);
         channel.write(buffer);
         channel.register(selector, SelectionKey.OP_READ);
-        channel.socket().shutdownOutput();
+//        channel.socket().shutdownOutput();
     }
     
     /**
