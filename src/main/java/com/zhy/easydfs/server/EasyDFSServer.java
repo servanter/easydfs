@@ -155,7 +155,7 @@ public class EasyDFSServer {
                     SocketChannel channel = serverSocketChannel.accept();
                     channel.configureBlocking(false);
                     channel.register(selector, SelectionKey.OP_READ);
-                    System.out.println("server receive client request " + channel.socket().getRemoteSocketAddress().toString());
+                    System.out.println("Server receive client connection request " + channel.socket().getRemoteSocketAddress().toString());
 
                     // when client request to download file, write file and close the channel
                     // TODO
@@ -163,26 +163,13 @@ public class EasyDFSServer {
                     // channel.close();
                 } else if (key.isReadable()) {
                     try {
-//                        SocketChannel c = (SocketChannel) key.channel();
-//                        ByteBuffer buffer = ByteBuffer.allocate(3);// 创建1024字节的缓冲
-//                        byte[] a = new byte[3];
-//                        
-//                        while ( c.read(buffer) > 0) {
-//                            buffer.flip();
-//                            buffer.get(a);
-//                            System.out.println(new String(a));
-//                            // 使用Charset.decode方法将字节转换为字符串
-//                            buffer.clear();
-//                        }
-//                        c.write(ByteBuffer.wrap("aab".getBytes()));
-//                         c.close();
                         dispatchHandler(key);
                     } catch (Exception e) {
                         e.printStackTrace();
                         key.cancel();
                     }
                 } else {
-                    System.out.println("cccccccccccccccccccccccccccc");
+                    System.out.println("other events?");
                 }
             }
         }
@@ -203,6 +190,7 @@ public class EasyDFSServer {
             if(majorChannel == null) {
                 majorChannel = channel;
             }
+            System.out.println("As shared channel: " + channel.socket().getRemoteSocketAddress());
             sharedChannels.put(k, channel);
         } else {
             List<String> sharedKeys = new ArrayList(sharedChannels.keySet());
@@ -211,7 +199,9 @@ public class EasyDFSServer {
                 // hasn't a replication
                 List<SocketChannel> reList = new ArrayList<SocketChannel>();
                 reList.add(channel);
-                replicationChannels.put(sharedKeys.get(0), reList);
+                String sharedKey = sharedKeys.get(0);
+                System.out.println("As replication channel: " + channel.socket().getRemoteSocketAddress() + " of " + sharedKey + " shared channel---");
+                replicationChannels.put(sharedKey, reList);
             } else {
                 boolean allHasRepli = true;
                 for (String sharedKey : sharedKeys) {
@@ -221,6 +211,7 @@ public class EasyDFSServer {
                         allHasRepli = false;
                         List<SocketChannel> reList = new ArrayList<SocketChannel>();
                         reList.add(channel);
+                        System.out.println("As replication channel: " + channel.socket().getRemoteSocketAddress() + " of " + sharedKey + "shared channel---");
                         replicationChannels.put(sharedKey, reList);
                         break;
                     }
@@ -273,9 +264,8 @@ public class EasyDFSServer {
                 buffer.clear();
             }
             code = new String(fileBytes).trim();
-            System.out.println("c=" + code);
+            System.out.println("Server receive code: " + code);
             if (code.length() > 0) {
-                System.out.println("code==================" + code);
                 if (NumberUtils.isInteger(code)) {
 
                     // is sign code
@@ -295,7 +285,6 @@ public class EasyDFSServer {
                     SocketChannel currentChannel = sharedChannels.get(currentKey);
                     currentChannel.register(selector, SelectionKey.OP_READ);
 
-                    System.out.println("send to shared :" + currentKey);
                     
                     // create version
                     File version = createVersionFile(file.getFileName(), currentKey);
@@ -305,12 +294,14 @@ public class EasyDFSServer {
 
                     // send shared channel
                     send(file, currentChannel);
+                    System.out.println("Sended to shared :" + currentKey);
 
                     // send the shared channel replication
                     List<SocketChannel> replications = replicationChannels.get(currentKey);
                     if (replications != null) {
                         for (SocketChannel socketChannel : replications) {
                             send(file, socketChannel);
+                            System.out.println("Sended to replication :" + socketChannel.socket().getRemoteSocketAddress());
                         }
                     }
                     
@@ -387,7 +378,7 @@ public class EasyDFSServer {
 
         // in alive channels
         String key = channel.socket().getRemoteSocketAddress().toString();
-        System.out.println("server receive " + key);
+        System.out.println("Keepalive channel: " + key);
         if (sharedChannels.containsKey(key)) {
             aliveSharedChannels.put(key, channel);
         } else if (replisKeys.contains(key)) {
@@ -417,14 +408,30 @@ public class EasyDFSServer {
             }
         }
         String fileAllName = fileName + builder.toString();
+        int len = file.getContentLength();
+        builder = new StringBuilder();
+        if (String.valueOf(len).length() < 100) {
+            for (int i = 0; i < 100 - String.valueOf(len).length(); i++) {
+                builder.append(" ");
+            }
+        }
+        String length = len + builder.toString();
         byte[] fileNameBytes = fileAllName.getBytes();
+        byte[] lengthBytes = length.getBytes();
         byte[] contents = file.getContents();
-        byte[] data = new byte[fileNameBytes.length + contents.length];
+        byte[] data = new byte[fileNameBytes.length + lengthBytes.length + contents.length];
         for (int i = 0; i < fileNameBytes.length; i++) {
             data[i] = fileNameBytes[i];
         }
+        
         int index = 0;
-        for (int i = fileNameBytes.length; i < data.length; i++) {
+        for (int i = fileNameBytes.length; i < fileNameBytes.length + lengthBytes.length; i++) {
+            data[i] = lengthBytes[index];
+            index++;
+        }
+        
+        index = 0;
+        for (int i = fileNameBytes.length + lengthBytes.length; i < data.length; i++) {
             data[i] = contents[index];
             index++;
         }
