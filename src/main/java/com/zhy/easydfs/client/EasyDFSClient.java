@@ -18,8 +18,6 @@ import com.zhy.easydfs.util.TemplateUtils;
 
 public class EasyDFSClient {
 
-    private static SocketChannel channel;
-
     private static Selector selector;
 
     private static String CLIENT_STORE_PATH;
@@ -35,7 +33,7 @@ public class EasyDFSClient {
             clientHandleThread.init();
             new Thread(clientHandleThread).start();
             Thread.sleep(2000);
-            client.send("D:\\", "car_info.js", channel);
+//            client.send("D:\\", "car_info.js", channel);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -69,7 +67,7 @@ public class EasyDFSClient {
                         if (key.isConnectable()) {
 
                             // connection the server
-                            channel = (SocketChannel) key.channel();
+                            SocketChannel channel = (SocketChannel) key.channel();
                             if (channel.isConnectionPending()) {
                                 channel.finishConnect();
                             }
@@ -78,10 +76,9 @@ public class EasyDFSClient {
                             channel.register(selector, SelectionKey.OP_READ);
                         } else if (key.isReadable()) {
                             try {
-                                dispatchHandler((SocketChannel) key.channel());
+                                dispatchHandler( key);
                             } catch (Exception e) {
                                 e.printStackTrace();
-                                key.cancel();
                             }
                         }
                     }
@@ -98,8 +95,9 @@ public class EasyDFSClient {
          * 
          * @param channel
          */
-        private void dispatchHandler(SocketChannel channel) throws Exception {
-
+        private void dispatchHandler(SelectionKey key) throws Exception {
+            SocketChannel channel = (SocketChannel) key.channel();
+            
             try {
              // the code capacity 100 bytes
                 int capacity = 100;
@@ -125,6 +123,32 @@ public class EasyDFSClient {
                         // is file
                         File file = fileHandler(code, channel);
                         write(file);
+                        
+//                        FileOutputStream fos = null;
+//                        FileChannel f = null;
+//                        try {
+//                            fos = new FileOutputStream(new java.io.File(CLIENT_STORE_PATH + code));
+//                            f = fos.getChannel();
+//                            ByteBuffer bb = ByteBuffer.allocate(1024);
+//
+//                            int size = 0;
+//                            while ((size = channel.read(bb)) != -1) {
+//                                bb.flip();
+//                                if (size > 0) {
+//                                    bb.limit(size);
+//                                    f.write(bb);
+//                                    bb.clear();
+//                                }
+//                            }
+//                        } finally {
+//                            try {
+//                                f.close();
+//                            } catch(Exception ex) {}
+//                            try {
+//                                fos.close();
+//                            } catch(Exception ex) {}
+//                        }
+                        
                     }
                 }
             } catch (Exception e) {
@@ -194,17 +218,32 @@ public class EasyDFSClient {
             ByteBuffer dataBuffer = ByteBuffer.allocate(1024);
             int contentLength = 0;
             int size = -1;
+//            ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+//            while ((size = channel.read(dataBuffer)) > 0) {
+//                contentLength += size;
+//                dataBuffer.flip();
+//                dataBuffer.limit(size);
+//                byteArrayOutputStream.write(dataBuffer.array());
+//                dataBuffer.clear();
+//            }
+            
+            byte[] bytes = null;
             ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-            while ((size = channel.read(dataBuffer)) > 0) {
+            while ((size = channel.read(dataBuffer)) != -1) {
                 contentLength += size;
                 dataBuffer.flip();
-                dataBuffer.limit(size);
-                byteArrayOutputStream.write(dataBuffer.array());
+//                dataBuffer.limit(size);
+                bytes = new byte[size];  
+                dataBuffer.get(bytes);
+                byteArrayOutputStream.write(bytes);
                 dataBuffer.clear();
             }
-            byte[] dataArray = byteArrayOutputStream.toByteArray();
+            
+            
+            // channel.close();
+            byte[] byteArray = byteArrayOutputStream.toByteArray();
             byteArrayOutputStream.close();
-            return new File(fileName, contentLength, dataArray);
+            return new File(fileName, contentLength, byteArray);
         }
 
     }

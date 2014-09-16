@@ -17,7 +17,8 @@ public class DFSUpload {
     public static void main(String[] args) {
         try {
             DFSUpload dfsUpload = new DFSUpload();
-            dfsUpload.upload("D:\\", "car_info.js");
+            boolean isSuccess = dfsUpload.upload("D:\\", "7777.jar");
+            System.out.println("upload is " + isSuccess);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -64,7 +65,6 @@ public class DFSUpload {
      * @param file
      */
     private void send(String fileFolder, String fileName, SocketChannel channel) throws Exception {
-        System.out.println(2222222);
         StringBuilder builder = new StringBuilder();
         if (fileName.length() < 100) {
             for (int i = 0; i < 100 - fileName.length(); i++) {
@@ -78,7 +78,7 @@ public class DFSUpload {
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
         FileChannel fileChannel = fis.getChannel();
         int size = 0;
-        while ((size = fileChannel.read(buffer)) > 0) {
+        while ((size = fileChannel.read(buffer)) >= 0) {
             buffer.flip();
             buffer.limit(size);
             byteArrayOutputStream.write(buffer.array());
@@ -96,6 +96,7 @@ public class DFSUpload {
         }
 
         channel.write(ByteBuffer.wrap(data));
+        channel.socket().shutdownOutput();  
         byteArrayOutputStream.close();
     }
 }

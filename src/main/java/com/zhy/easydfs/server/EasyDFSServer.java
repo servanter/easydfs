@@ -9,7 +9,6 @@ import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
-import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
@@ -17,9 +16,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Timer;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Logger;
-
-import javax.xml.ws.handler.MessageContext.Scope;
 
 import com.zhy.easydfs.constants.Code;
 import com.zhy.easydfs.file.File;
@@ -72,6 +68,11 @@ public class EasyDFSServer {
      * record unconnections
      */
     private ConcurrentHashMap<String, Integer> badChannels = new ConcurrentHashMap<String, Integer>();
+    
+    /**
+     * first channel 
+     */
+    private SocketChannel majorChannel;
 
     /**
      * server host
@@ -92,8 +93,6 @@ public class EasyDFSServer {
      * shards
      */
     private static int SHAREDS = 0;
-
-    private static final int MAX_SIZE = 10000;
 
     private EasyDFSServer() {
 
@@ -164,20 +163,20 @@ public class EasyDFSServer {
                     // channel.close();
                 } else if (key.isReadable()) {
                     try {
-                        SocketChannel c = (SocketChannel) key.channel();
-                        ByteBuffer buffer = ByteBuffer.allocate(3);// 创建1024字节的缓冲
-                        byte[] a = new byte[3];
-                        
-                        while ( c.read(buffer) > 0) {
-                            buffer.flip();
-                            buffer.get(a);
-                            System.out.println(new String(a));
-                            // 使用Charset.decode方法将字节转换为字符串
-                            buffer.clear();
-                        }
-                        c.write(ByteBuffer.wrap("aab".getBytes()));
-                         c.close();
-//                        dispatchHandler(key);
+//                        SocketChannel c = (SocketChannel) key.channel();
+//                        ByteBuffer buffer = ByteBuffer.allocate(3);// 创建1024字节的缓冲
+//                        byte[] a = new byte[3];
+//                        
+//                        while ( c.read(buffer) > 0) {
+//                            buffer.flip();
+//                            buffer.get(a);
+//                            System.out.println(new String(a));
+//                            // 使用Charset.decode方法将字节转换为字符串
+//                            buffer.clear();
+//                        }
+//                        c.write(ByteBuffer.wrap("aab".getBytes()));
+//                         c.close();
+                        dispatchHandler(key);
                     } catch (Exception e) {
                         e.printStackTrace();
                         key.cancel();
@@ -199,6 +198,11 @@ public class EasyDFSServer {
         // judge current connected channels is saturated
         if (sharedChannels.size() < SHAREDS) {
             String k = channel.socket().getRemoteSocketAddress().toString();
+            
+            // set major channel
+            if(majorChannel == null) {
+                majorChannel = channel;
+            }
             sharedChannels.put(k, channel);
         } else {
             List<String> sharedKeys = new ArrayList(sharedChannels.keySet());
@@ -227,7 +231,7 @@ public class EasyDFSServer {
 
                     // judge every replication size
                     String smallSharedKey = "";
-                    int smallSize = MAX_SIZE;
+                    int smallSize = Integer.MAX_VALUE;
                     for (String sharedKey : sharedKeys) {
                         List<SocketChannel> chs = replicationChannels.get(sharedKey);
                         if (chs != null) {
@@ -291,6 +295,8 @@ public class EasyDFSServer {
                     SocketChannel currentChannel = sharedChannels.get(currentKey);
                     currentChannel.register(selector, SelectionKey.OP_READ);
 
+                    System.out.println("send to shared :" + currentKey);
+                    
                     // create version
                     File version = createVersionFile(file.getFileName(), currentKey);
 
@@ -307,6 +313,10 @@ public class EasyDFSServer {
                             send(file, socketChannel);
                         }
                     }
+                    
+                    // send upload success identification
+                    send(Code.OPT_UPLOAD_SUCCESS, channel);
+                    channel.close();
                 }
 
             }
@@ -420,6 +430,27 @@ public class EasyDFSServer {
         }
         ByteBuffer buffer = ByteBuffer.wrap(data);
         channel.write(buffer);
+        channel.register(selector, SelectionKey.OP_READ);
+        channel.socket().shutdownOutput();
+    }
+    
+    /**
+     * send code
+     * 
+     * @param code
+     * @param channel
+     * @throws Exception
+     */
+    private void send(Code code, SocketChannel channel) throws Exception {
+        String text = String.valueOf(code.getCode());
+        StringBuilder builder = new StringBuilder();
+        if (text.length() < 100) {
+            for (int i = 0; i < 100 - text.length(); i++) {
+                builder.append(" ");
+            }
+        }
+        text = text + builder.toString();
+        channel.write(ByteBuffer.wrap(text.getBytes()));
     }
 
     /**
@@ -443,20 +474,22 @@ public class EasyDFSServer {
      * @throws Exception
      */
     private File fileHandler(String fileName, SocketChannel channel) throws Exception {
-        ByteBuffer dataBuffer = ByteBuffer.allocate(1024);
+        ByteBuffer dataBuffer = ByteBuffer.allocateDirect(1024);
         int contentLength = 0;
         int size = -1;
+        byte[] bytes = null;
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-        while ((size = channel.read(dataBuffer)) > 0) {
+        while ((size = channel.read(dataBuffer)) != -1) {
             contentLength += size;
             dataBuffer.flip();
-            dataBuffer.limit(size);
-            byteArrayOutputStream.write(dataBuffer.array());
+//            dataBuffer.limit(size);
+            bytes = new byte[size];  
+            dataBuffer.get(bytes);
+            byteArrayOutputStream.write(bytes);
             dataBuffer.clear();
         }
-        // channel.close();
-        byteArrayOutputStream.close();
         byte[] byteArray = byteArrayOutputStream.toByteArray();
+        byteArrayOutputStream.close();
         return new File(fileName, contentLength, byteArray);
     }
 
