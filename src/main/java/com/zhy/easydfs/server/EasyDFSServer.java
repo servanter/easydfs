@@ -1,7 +1,13 @@
 package com.zhy.easydfs.server;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FilenameFilter;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -27,6 +33,11 @@ import com.zhy.easydfs.util.TemplateUtils;
  * 
  * @author zhanghongyan
  * 
+ */
+/**
+ *
+ * @author zhanghongyan
+ *
  */
 public class EasyDFSServer {
 
@@ -73,6 +84,11 @@ public class EasyDFSServer {
      * first channel 
      */
     private SocketChannel majorChannel;
+    
+    /**
+     * shared file text
+     */
+    private Map<Integer, List<String>> sharedIndexed = new ConcurrentHashMap<Integer, List<String>>();
 
     /**
      * server host
@@ -114,7 +130,7 @@ public class EasyDFSServer {
         }
         Timer timer = new Timer();
 
-//         timer.schedule(new EasyDFSObserver(), 5000*6, TIME);
+        timer.schedule(new EasyDFSObserver(), 5000, TIME);
         EasyDFSServer dfsServer = EasyDFSServer.getInstance();
         try {
             dfsServer.init();
@@ -135,6 +151,51 @@ public class EasyDFSServer {
         serverChannel.socket().bind(new InetSocketAddress(SERVER_HOST, SERVER_PORT));
         selector = Selector.open();
         serverChannel.register(selector, SelectionKey.OP_ACCEPT);
+        initFileText();
+    }
+
+    /**
+     * init server index file
+     */
+    private void initFileText() {
+        java.io.File folder = new java.io.File(SERVER_FOLDER);
+        java.io.File[] files = folder.listFiles(new FilenameFilter() {
+
+            @Override
+            public boolean accept(java.io.File dir, String name) {
+                if ((dir.getAbsolutePath() + "\\").equals(SERVER_FOLDER) && name.contains(".index")) {
+                    return true;
+                }
+                return false;
+            }
+        });
+        if (files != null) {
+            for (java.io.File f : files) {
+                String fileName = f.getName();
+                String prefix = fileName.substring(0, fileName.indexOf("."));
+                BufferedReader reader = null;
+                try {
+                    reader = new BufferedReader(new InputStreamReader(new FileInputStream(f.getAbsoluteFile())));
+                    String str = null;
+                    List<String> text = new ArrayList<String>();
+                    while ((str = reader.readLine()) != null) {
+                        text.add(str);
+                    }
+                    sharedIndexed.put(Integer.parseInt(prefix), text);
+                } catch (FileNotFoundException e) {
+                    e.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                } finally {
+                    try {
+                        reader.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+        
     }
 
     /**
@@ -287,7 +348,7 @@ public class EasyDFSServer {
 
                     
                     // create version
-                    File version = createVersionFile(file.getFileName(), currentKey);
+//                    File version = createVersionFile(file.getFileName(), currentKey);
 
                     // send shared channel version
                     // send(version, currentChannel);
@@ -308,6 +369,7 @@ public class EasyDFSServer {
                     // send upload success identification
                     send(Code.OPT_UPLOAD_SUCCESS, channel);
                     channel.close();
+                    createIndexFile(shard, file.getFileName());
                 }
 
             }
@@ -316,6 +378,18 @@ public class EasyDFSServer {
             throw new Exception(e);
         }
 
+    }
+
+    /**
+     * start other using append file
+     * 
+     * @param shard
+     * @param fileName
+     */
+    private void createIndexFile(int shard, String fileName) {
+        String sharedIndexFilePath = SERVER_FOLDER + shard + ".index";
+        Thread appendIndexFileThread = new Thread(new IndexFileHandler(new java.io.File(sharedIndexFilePath), fileName));
+        appendIndexFileThread.start();
     }
 
     /**

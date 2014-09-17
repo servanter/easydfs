@@ -53,8 +53,6 @@ public class File {
     public int hashCode() {
         final int prime = 31;
         int result = 1;
-        result = prime * result + contentLength;
-        result = prime * result + Arrays.hashCode(contents);
         result = prime * result + ((fileName == null) ? 0 : fileName.hashCode());
         return Math.abs(result);
     }

@@ -78,6 +78,7 @@ public class EasyDFSClient {
                             try {
                                  dispatchHandler( key);
                             } catch (Exception e) {
+                                key.cancel();
                                 e.printStackTrace();
                             }
                         }

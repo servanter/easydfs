@@ -17,7 +17,7 @@ public class DFSUpload {
     public static void main(String[] args) {
         try {
             DFSUpload dfsUpload = new DFSUpload();
-            boolean isSuccess = dfsUpload.upload("D:\\", "aaa.JPG");
+            boolean isSuccess = dfsUpload.upload("D:\\", "aaa.txt");
             System.out.println("upload is " + isSuccess);
         } catch (Exception e) {
             e.printStackTrace();
