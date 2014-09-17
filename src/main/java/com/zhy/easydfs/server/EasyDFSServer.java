@@ -23,9 +23,15 @@ import java.util.Map;
 import java.util.Timer;
 import java.util.concurrent.ConcurrentHashMap;
 
+import javax.xml.ws.handler.MessageContext.Scope;
+
 import com.zhy.easydfs.constants.Code;
 import com.zhy.easydfs.file.File;
+import com.zhy.easydfs.util.ArrayUtils;
+import com.zhy.easydfs.util.ChannelUtils;
+import com.zhy.easydfs.util.FileUtils;
 import com.zhy.easydfs.util.NumberUtils;
+import com.zhy.easydfs.util.StringUtils;
 import com.zhy.easydfs.util.TemplateUtils;
 
 /**
@@ -33,6 +39,11 @@ import com.zhy.easydfs.util.TemplateUtils;
  * 
  * @author zhanghongyan
  * 
+ */
+/**
+ *
+ * @author zhanghongyan
+ *
  */
 /**
  *
@@ -81,14 +92,15 @@ public class EasyDFSServer {
     private ConcurrentHashMap<String, Integer> badChannels = new ConcurrentHashMap<String, Integer>();
     
     /**
-     * first channel 
-     */
-    private SocketChannel majorChannel;
-    
-    /**
      * shared file text
      */
     private Map<Integer, List<String>> sharedIndexed = new ConcurrentHashMap<Integer, List<String>>();
+    
+    /**
+     * download channels<br>
+     * key:download file name
+     */
+    private Map<String, List<SocketChannel>> downloadChannels = new ConcurrentHashMap<String, List<SocketChannel>>();
 
     /**
      * server host
@@ -246,11 +258,6 @@ public class EasyDFSServer {
         // judge current connected channels is saturated
         if (sharedChannels.size() < SHAREDS) {
             String k = channel.socket().getRemoteSocketAddress().toString();
-            
-            // set major channel
-            if(majorChannel == null) {
-                majorChannel = channel;
-            }
             System.out.println("As shared channel: " + channel.socket().getRemoteSocketAddress());
             sharedChannels.put(k, channel);
         } else {
@@ -430,8 +437,126 @@ public class EasyDFSServer {
             // in alive channels
             handlerAlive(channel);
             break;
+        case OPT_DOWNLOAD:
+            handlerDownload(channel);
+        case OPT_DOWNLOAD_FOUND_FILE:
+            handlerDownloadOver(channel);
         default:
             break;
+        }
+    }
+
+    /**
+     * handler the client message
+     * @param channel
+     */
+    private void handlerDownloadOver(SocketChannel channel) throws Exception {
+        String fileName = ChannelUtils.readTop100(channel);
+        String length = ChannelUtils.readTop100(channel);
+        
+        if(NumberUtils.isInteger(length)) {
+            
+            ByteBuffer dataBuffer = ByteBuffer.allocate(1024);
+            int contentLength = 0;
+            int size = -1;
+            byte[] bytes = null;
+            ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+            while ((size = channel.read(dataBuffer)) >= 0) {
+                contentLength += size;
+                dataBuffer.flip();
+                bytes = new byte[size];  
+                dataBuffer.get(bytes);
+                byteArrayOutputStream.write(bytes);
+                dataBuffer.clear();
+                if(contentLength >= Integer.parseInt(length)) {
+                    break;
+                }
+            }
+            byte[] byteArray = byteArrayOutputStream.toByteArray();
+            byteArrayOutputStream.close();
+            if(downloadChannels.containsKey(fileName)) {
+                
+                byte[] returnCode = StringUtils.fullSpace(Code.OPT_DOWNLOAD_SUCCESS.getCode()).getBytes();
+                byte[] fileNameBytes = StringUtils.fullSpace(fileName).getBytes();
+                byte[] fileContent = byteArray;
+                byte[] fileLength = StringUtils.fullSpace(fileContent.length).getBytes();
+                byte[] array = new byte[returnCode.length + fileNameBytes.length + fileLength.length + fileContent.length];
+                
+                // sequence code, filename, length, content
+                ArrayUtils.arrayBytesCopy(returnCode, array, 0);
+                ArrayUtils.arrayBytesCopy(fileNameBytes, array, returnCode.length);
+                ArrayUtils.arrayBytesCopy(fileLength, array, returnCode.length + fileNameBytes.length);
+                ArrayUtils.arrayBytesCopy(fileContent, array, returnCode.length + fileNameBytes.length + fileLength.length);
+                
+                
+                // Send to all of the channels want to download files
+                
+                List<SocketChannel> chs = downloadChannels.get(fileName);
+                for(SocketChannel c: chs) {
+                    c.write(ByteBuffer.wrap(array));
+                    c.socket().shutdownOutput();
+                }
+                
+            }
+        }
+    }
+
+    /**
+     * control file download
+     * 
+     * @param channel
+     */
+    private void handlerDownload(SocketChannel channel) throws Exception {
+        String fileName = ChannelUtils.readTop100(channel);
+        File file = new File();
+        
+        // only calculate filename hashcode
+        file.setFileName(fileName);
+        int sharedCode = file.hashCode();
+        if(sharedChannels.size() > 0) {
+            sharedCode = sharedCode % sharedChannels.size();
+            List<String> fileNames = sharedIndexed.get(sharedCode);
+            int indexChannel = -1;
+            if(fileNames != null) {
+                for(String f : fileNames) {
+                    if(f.equals(fileName)) {
+                        indexChannel = sharedCode;
+                        break;
+                    }
+                }
+            }
+            
+            // Could not Find the file in the current chared
+            if(indexChannel == -1 ) {
+                System.out.println("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+            }
+            
+            // find the file in client
+            if(indexChannel != -1) {
+                if(indexChannel <= sharedChannels.size()) {
+                    List<String> keys = new ArrayList<String>(sharedChannels.keySet());
+                    String key = keys.get(indexChannel);
+                    SocketChannel thisChannel = sharedChannels.get(key);
+                    String codeStr = StringUtils.fullSpace(Code.OPT_DOWNLOAD_REQUEST_CLIENT.getCode());
+                    String fileStr = StringUtils.fullSpace(fileName);
+                    byte[] data = StringUtils.mergeAndGenerateBytes(codeStr, fileStr);
+                    thisChannel.write(ByteBuffer.wrap(data));
+                    
+                    if(downloadChannels.get(fileName) != null) {
+                        List<SocketChannel> chs = downloadChannels.get(fileName);
+                        chs.add(channel);
+                        downloadChannels.put(fileName, chs);
+                    } else {
+                        List<SocketChannel> chs = new ArrayList<SocketChannel>();
+                        chs.add(channel);
+                        downloadChannels.put(fileName, chs);
+                    }
+                }
+            }
+        } else {
+            
+            // write error and close the channel
+            System.out.println("aaaaaaaaaaaaaaaaaaaaaaaaaaa");
         }
     }
 

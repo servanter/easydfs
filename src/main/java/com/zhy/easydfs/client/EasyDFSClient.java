@@ -3,6 +3,7 @@ package com.zhy.easydfs.client;
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FilenameFilter;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -13,7 +14,11 @@ import java.util.Iterator;
 
 import com.zhy.easydfs.constants.Code;
 import com.zhy.easydfs.file.File;
+import com.zhy.easydfs.util.ArrayUtils;
+import com.zhy.easydfs.util.ChannelUtils;
+import com.zhy.easydfs.util.FileUtils;
 import com.zhy.easydfs.util.NumberUtils;
+import com.zhy.easydfs.util.StringUtils;
 import com.zhy.easydfs.util.TemplateUtils;
 
 public class EasyDFSClient {
@@ -28,12 +33,9 @@ public class EasyDFSClient {
                 System.exit(0);
             }
             CLIENT_STORE_PATH = args[0];
-            EasyDFSClient client = new EasyDFSClient();
             DFSClientHandleThread clientHandleThread = new DFSClientHandleThread();
             clientHandleThread.init();
             new Thread(clientHandleThread).start();
-            Thread.sleep(2000);
-//            client.send("D:\\", "car_info.js", channel);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -112,7 +114,7 @@ public class EasyDFSClient {
                 }
                 code = new String(fileBytes).trim();
                 if(code.length() > 0) {
-                    System.out.println("code=" + code);
+                    System.out.println("Client receive the code: " + code);
                     
                     if (NumberUtils.isInteger(code)) {
                         
@@ -124,32 +126,6 @@ public class EasyDFSClient {
                         // is file
                         File file = fileHandler(code, channel);
                         write(file);
-                        
-//                        FileOutputStream fos = null;
-//                        FileChannel f = null;
-//                        try {
-//                            fos = new FileOutputStream(new java.io.File(CLIENT_STORE_PATH + code));
-//                            f = fos.getChannel();
-//                            ByteBuffer bb = ByteBuffer.allocate(1024);
-//
-//                            int size = 0;
-//                            while ((size = channel.read(bb)) != -1) {
-//                                bb.flip();
-//                                if (size > 0) {
-//                                    bb.limit(size);
-//                                    f.write(bb);
-//                                    bb.clear();
-//                                }
-//                            }
-//                        } finally {
-//                            try {
-//                                f.close();
-//                            } catch(Exception ex) {}
-//                            try {
-//                                fos.close();
-//                            } catch(Exception ex) {}
-//                        }
-                        
                     }
                 }
             } catch (Exception e) {
@@ -190,9 +166,47 @@ public class EasyDFSClient {
                 name += builder.toString();
                 channel.write(ByteBuffer.wrap(String.valueOf(name).getBytes()));
                 break;
+            case OPT_DOWNLOAD_REQUEST_CLIENT:
+                handlerDownload(channel);
             default:
                 break;
             }
+        }
+
+        /**
+         * control file download
+         * 
+         * @param channel
+         */
+        private void handlerDownload(SocketChannel channel) throws Exception {
+            final String fileName = ChannelUtils.readTop100(channel);
+            java.io.File file = new java.io.File(CLIENT_STORE_PATH);
+            java.io.File[] fs = file.listFiles(new FilenameFilter() {
+
+                @Override
+                public boolean accept(java.io.File dir, String name) {
+                    if (fileName.equals(name)) {
+                        return true;
+                    }
+                    return false;
+                }
+            });
+            if(fs != null && fs.length > 0) {
+                java.io.File f = fs[0];
+                byte[] returnCode = StringUtils.fullSpace(Code.OPT_DOWNLOAD_FOUND_FILE.getCode()).getBytes();
+                byte[] fileNameBytes = StringUtils.fullSpace(fileName).getBytes();
+                byte[] fileContent = FileUtils.readFile(f.getAbsoluteFile());
+                byte[] fileLength = StringUtils.fullSpace(fileContent.length).getBytes();
+                byte[] array = new byte[returnCode.length + fileNameBytes.length + fileLength.length + fileContent.length];
+                
+                // sequence code, filename, length, content
+                ArrayUtils.arrayBytesCopy(returnCode, array, 0);
+                ArrayUtils.arrayBytesCopy(fileNameBytes, array, returnCode.length);
+                ArrayUtils.arrayBytesCopy(fileLength, array, returnCode.length + fileNameBytes.length);
+                ArrayUtils.arrayBytesCopy(fileContent, array, returnCode.length + fileNameBytes.length + fileLength.length);
+                channel.write(ByteBuffer.wrap(array));
+            }
+            
         }
 
         /**

@@ -12,12 +12,13 @@ import com.zhy.easydfs.util.NumberUtils;
 import com.zhy.easydfs.util.TemplateUtils;
 
 public class DFSUpload {
+
     private static SocketChannel channel;
 
     public static void main(String[] args) {
         try {
             DFSUpload dfsUpload = new DFSUpload();
-            boolean isSuccess = dfsUpload.upload("D:\\", "aaa.txt");
+            boolean isSuccess = dfsUpload.upload("D:\\", "listen.rar");
             System.out.println("upload is " + isSuccess);
         } catch (Exception e) {
             e.printStackTrace();
@@ -96,7 +97,7 @@ public class DFSUpload {
         }
 
         channel.write(ByteBuffer.wrap(data));
-        channel.socket().shutdownOutput();  
+        channel.socket().shutdownOutput();
         byteArrayOutputStream.close();
     }
 }
