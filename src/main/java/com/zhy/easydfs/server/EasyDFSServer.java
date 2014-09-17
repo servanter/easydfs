@@ -46,9 +46,9 @@ import com.zhy.easydfs.util.TemplateUtils;
  *
  */
 /**
- *
+ * 
  * @author zhanghongyan
- *
+ * 
  */
 public class EasyDFSServer {
 
@@ -90,12 +90,12 @@ public class EasyDFSServer {
      * record unconnections
      */
     private ConcurrentHashMap<String, Integer> badChannels = new ConcurrentHashMap<String, Integer>();
-    
+
     /**
      * shared file text
      */
     private Map<Integer, List<String>> sharedIndexed = new ConcurrentHashMap<Integer, List<String>>();
-    
+
     /**
      * download channels<br>
      * key:download file name
@@ -207,7 +207,7 @@ public class EasyDFSServer {
                 }
             }
         }
-        
+
     }
 
     /**
@@ -229,11 +229,6 @@ public class EasyDFSServer {
                     channel.configureBlocking(false);
                     channel.register(selector, SelectionKey.OP_READ);
                     System.out.println("Server receive client connection request " + channel.socket().getRemoteSocketAddress().toString());
-
-                    // when client request to download file, write file and close the channel
-                    // TODO
-                    // channel.write(ByteBuffer.wrap("aab".getBytes()));
-                    // channel.close();
                 } else if (key.isReadable()) {
                     try {
                         dispatchHandler(key);
@@ -322,16 +317,7 @@ public class EasyDFSServer {
         try {
 
             // the code capacity 100 bytes
-            int capacity = 100;
-            byte[] fileBytes = new byte[100];
-            String code = "";
-            ByteBuffer buffer = ByteBuffer.allocate(capacity);
-            if (channel.read(buffer) > 0) {
-                buffer.flip();
-                buffer.get(fileBytes);
-                buffer.clear();
-            }
-            code = new String(fileBytes).trim();
+            String code = ChannelUtils.readTop100(channel);
             System.out.println("Server receive code: " + code);
             if (code.length() > 0) {
                 if (NumberUtils.isInteger(code)) {
@@ -353,9 +339,8 @@ public class EasyDFSServer {
                     SocketChannel currentChannel = sharedChannels.get(currentKey);
                     currentChannel.register(selector, SelectionKey.OP_READ);
 
-                    
                     // create version
-//                    File version = createVersionFile(file.getFileName(), currentKey);
+                    // File version = createVersionFile(file.getFileName(), currentKey);
 
                     // send shared channel version
                     // send(version, currentChannel);
@@ -372,7 +357,7 @@ public class EasyDFSServer {
                             System.out.println("Sended to replication :" + socketChannel.socket().getRemoteSocketAddress());
                         }
                     }
-                    
+
                     // send upload success identification
                     send(Code.OPT_UPLOAD_SUCCESS, channel);
                     channel.close();
@@ -448,55 +433,37 @@ public class EasyDFSServer {
 
     /**
      * handler the client message
+     * 
      * @param channel
      */
     private void handlerDownloadOver(SocketChannel channel) throws Exception {
         String fileName = ChannelUtils.readTop100(channel);
         String length = ChannelUtils.readTop100(channel);
-        
-        if(NumberUtils.isInteger(length)) {
-            
-            ByteBuffer dataBuffer = ByteBuffer.allocate(1024);
-            int contentLength = 0;
-            int size = -1;
-            byte[] bytes = null;
-            ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-            while ((size = channel.read(dataBuffer)) >= 0) {
-                contentLength += size;
-                dataBuffer.flip();
-                bytes = new byte[size];  
-                dataBuffer.get(bytes);
-                byteArrayOutputStream.write(bytes);
-                dataBuffer.clear();
-                if(contentLength >= Integer.parseInt(length)) {
-                    break;
-                }
-            }
-            byte[] byteArray = byteArrayOutputStream.toByteArray();
-            byteArrayOutputStream.close();
-            if(downloadChannels.containsKey(fileName)) {
-                
+
+        if (NumberUtils.isInteger(length)) {
+
+            byte[] byteArray = ChannelUtils.readFile(channel, Integer.parseInt(length));
+            if (downloadChannels.containsKey(fileName)) {
+
                 byte[] returnCode = StringUtils.fullSpace(Code.OPT_DOWNLOAD_SUCCESS.getCode()).getBytes();
                 byte[] fileNameBytes = StringUtils.fullSpace(fileName).getBytes();
                 byte[] fileContent = byteArray;
                 byte[] fileLength = StringUtils.fullSpace(fileContent.length).getBytes();
                 byte[] array = new byte[returnCode.length + fileNameBytes.length + fileLength.length + fileContent.length];
-                
+
                 // sequence code, filename, length, content
                 ArrayUtils.arrayBytesCopy(returnCode, array, 0);
                 ArrayUtils.arrayBytesCopy(fileNameBytes, array, returnCode.length);
                 ArrayUtils.arrayBytesCopy(fileLength, array, returnCode.length + fileNameBytes.length);
                 ArrayUtils.arrayBytesCopy(fileContent, array, returnCode.length + fileNameBytes.length + fileLength.length);
-                
-                
+
                 // Send to all of the channels want to download files
-                
                 List<SocketChannel> chs = downloadChannels.get(fileName);
-                for(SocketChannel c: chs) {
+                for (SocketChannel c : chs) {
                     c.write(ByteBuffer.wrap(array));
                     c.socket().shutdownOutput();
                 }
-                
+
             }
         }
     }
@@ -509,31 +476,31 @@ public class EasyDFSServer {
     private void handlerDownload(SocketChannel channel) throws Exception {
         String fileName = ChannelUtils.readTop100(channel);
         File file = new File();
-        
+
         // only calculate filename hashcode
         file.setFileName(fileName);
         int sharedCode = file.hashCode();
-        if(sharedChannels.size() > 0) {
+        if (sharedChannels.size() > 0) {
             sharedCode = sharedCode % sharedChannels.size();
             List<String> fileNames = sharedIndexed.get(sharedCode);
             int indexChannel = -1;
-            if(fileNames != null) {
-                for(String f : fileNames) {
-                    if(f.equals(fileName)) {
+            if (fileNames != null) {
+                for (String f : fileNames) {
+                    if (f.equals(fileName)) {
                         indexChannel = sharedCode;
                         break;
                     }
                 }
             }
-            
+
             // Could not Find the file in the current chared
-            if(indexChannel == -1 ) {
-                System.out.println("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+            if (indexChannel == -1) {
+
             }
-            
+
             // find the file in client
-            if(indexChannel != -1) {
-                if(indexChannel <= sharedChannels.size()) {
+            if (indexChannel != -1) {
+                if (indexChannel <= sharedChannels.size()) {
                     List<String> keys = new ArrayList<String>(sharedChannels.keySet());
                     String key = keys.get(indexChannel);
                     SocketChannel thisChannel = sharedChannels.get(key);
@@ -541,8 +508,8 @@ public class EasyDFSServer {
                     String fileStr = StringUtils.fullSpace(fileName);
                     byte[] data = StringUtils.mergeAndGenerateBytes(codeStr, fileStr);
                     thisChannel.write(ByteBuffer.wrap(data));
-                    
-                    if(downloadChannels.get(fileName) != null) {
+
+                    if (downloadChannels.get(fileName) != null) {
                         List<SocketChannel> chs = downloadChannels.get(fileName);
                         chs.add(channel);
                         downloadChannels.put(fileName, chs);
@@ -554,9 +521,9 @@ public class EasyDFSServer {
                 }
             }
         } else {
-            
-            // write error and close the channel
-            System.out.println("aaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
+            // write unreadable error code and close the channel
+
         }
     }
 
@@ -600,46 +567,18 @@ public class EasyDFSServer {
      */
     private void send(File file, SocketChannel channel) throws Exception {
         String fileName = file.getFileName();
-        StringBuilder builder = new StringBuilder();
-        if (fileName.length() < 100) {
-            for (int i = 0; i < 100 - fileName.length(); i++) {
-                builder.append(" ");
-            }
-        }
-        String fileAllName = fileName + builder.toString();
-        int len = file.getContentLength();
-        builder = new StringBuilder();
-        if (String.valueOf(len).length() < 100) {
-            for (int i = 0; i < 100 - String.valueOf(len).length(); i++) {
-                builder.append(" ");
-            }
-        }
-        String length = len + builder.toString();
-        byte[] fileNameBytes = fileAllName.getBytes();
-        byte[] lengthBytes = length.getBytes();
+        byte[] fileNameBytes = StringUtils.fullSpace(fileName).getBytes();
         byte[] contents = file.getContents();
-        byte[] data = new byte[fileNameBytes.length + lengthBytes.length + contents.length];
-        for (int i = 0; i < fileNameBytes.length; i++) {
-            data[i] = fileNameBytes[i];
-        }
-        
-        int index = 0;
-        for (int i = fileNameBytes.length; i < fileNameBytes.length + lengthBytes.length; i++) {
-            data[i] = lengthBytes[index];
-            index++;
-        }
-        
-        index = 0;
-        for (int i = fileNameBytes.length + lengthBytes.length; i < data.length; i++) {
-            data[i] = contents[index];
-            index++;
-        }
-        ByteBuffer buffer = ByteBuffer.wrap(data);
-        channel.write(buffer);
+        byte[] lengthBytes = StringUtils.fullSpace(file.getContents().length).getBytes();
+        byte[] array = new byte[fileNameBytes.length + lengthBytes.length + contents.length];
+
+        ArrayUtils.arrayBytesCopy(fileNameBytes, array, 0);
+        ArrayUtils.arrayBytesCopy(lengthBytes, array, fileNameBytes.length);
+        ArrayUtils.arrayBytesCopy(contents, array, fileNameBytes.length + lengthBytes.length);
+        channel.write(ByteBuffer.wrap(array));
         channel.register(selector, SelectionKey.OP_READ);
-//        channel.socket().shutdownOutput();
     }
-    
+
     /**
      * send code
      * 
@@ -648,15 +587,7 @@ public class EasyDFSServer {
      * @throws Exception
      */
     private void send(Code code, SocketChannel channel) throws Exception {
-        String text = String.valueOf(code.getCode());
-        StringBuilder builder = new StringBuilder();
-        if (text.length() < 100) {
-            for (int i = 0; i < 100 - text.length(); i++) {
-                builder.append(" ");
-            }
-        }
-        text = text + builder.toString();
-        channel.write(ByteBuffer.wrap(text.getBytes()));
+        channel.write(ByteBuffer.wrap(StringUtils.fullSpace(code.getCode()).getBytes()));
     }
 
     /**
@@ -688,8 +619,7 @@ public class EasyDFSServer {
         while ((size = channel.read(dataBuffer)) != -1) {
             contentLength += size;
             dataBuffer.flip();
-//            dataBuffer.limit(size);
-            bytes = new byte[size];  
+            bytes = new byte[size];
             dataBuffer.get(bytes);
             byteArrayOutputStream.write(bytes);
             dataBuffer.clear();
@@ -772,7 +702,6 @@ public class EasyDFSServer {
                     }
                 }
             }
-
             System.out.println("replication size:" + replisKeys.size());
             clearAlivedChannels();
         }
@@ -784,29 +713,20 @@ public class EasyDFSServer {
      * @throws Exception
      */
     protected void boardCast() throws Exception {
-        String text = String.valueOf(Code.SERVER_HEARTBEAT.getCode());
-        StringBuilder builder = new StringBuilder();
-        if (text.length() < 100) {
-            for (int i = 0; i < 100 - text.length(); i++) {
-                builder.append(" ");
-            }
-        }
-        text = text + builder.toString();
-
+        byte[] text = StringUtils.fullSpace(Code.SERVER_HEARTBEAT.getCode()).getBytes();
         List<SelectionKey> selects = new ArrayList<SelectionKey>(selector.keys());
         for (SelectionKey key : selects) {
             if (key.channel() instanceof SocketChannel) {
                 key.interestOps(SelectionKey.OP_READ);
             }
         }
-
         List<String> sharedKeys = new ArrayList(sharedChannels.keySet());
         for (String sharedKey : sharedKeys) {
             SocketChannel sharedChannel = sharedChannels.get(sharedKey);
             if (sharedChannel != null) {
                 try {
-                    System.out.println("boardcast to " + sharedKey);
-                    sharedChannel.write(ByteBuffer.wrap(text.getBytes()));
+                    System.out.println("Boardcast to " + sharedKey);
+                    sharedChannel.write(ByteBuffer.wrap(text));
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -814,7 +734,7 @@ public class EasyDFSServer {
                 if (sharedRepliChannels != null && !sharedRepliChannels.isEmpty()) {
                     for (SocketChannel sharedRepliChannel : sharedRepliChannels) {
                         try {
-                            sharedRepliChannel.write(ByteBuffer.wrap(text.getBytes()));
+                            sharedRepliChannel.write(ByteBuffer.wrap(text));
                         } catch (Exception e) {
                             e.printStackTrace();
                         }

@@ -1,6 +1,5 @@
 package com.zhy.easydfs.api;
 
-import java.io.ByteArrayOutputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -9,13 +8,12 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
 
 import com.zhy.easydfs.constants.Code;
-import com.zhy.easydfs.file.File;
 import com.zhy.easydfs.util.ArrayUtils;
 import com.zhy.easydfs.util.ChannelUtils;
 import com.zhy.easydfs.util.StringUtils;
 import com.zhy.easydfs.util.TemplateUtils;
 
-public class DFSDownload {
+public class EasyDFSDownload {
 
     public static void main(String[] args) {
         String str = download("listen.rar");
@@ -45,25 +43,7 @@ public class DFSDownload {
             String length = ChannelUtils.readTop100(channel);
 
             System.out.println("code =" + code + ", name=" + name + ", length=" + length);
-            ByteBuffer dataBuffer = ByteBuffer.allocate(1024);
-            int contentLength = 0;
-            int size = -1;
-            byte[] bytes = null;
-            ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-            while ((size = channel.read(dataBuffer)) >= 0) {
-                contentLength += size;
-                dataBuffer.flip();
-                bytes = new byte[size];
-                dataBuffer.get(bytes);
-                byteArrayOutputStream.write(bytes);
-                dataBuffer.clear();
-                if (contentLength >= Integer.parseInt(length)) {
-                    break;
-                }
-            }
-
-            byte[] byteArray = byteArrayOutputStream.toByteArray();
-            byteArrayOutputStream.close();
+            byte[] byteArray = ChannelUtils.readFile(channel, Integer.parseInt(length));
 
             FileOutputStream fos = new FileOutputStream(new java.io.File("D:\\nio\\download\\" + fileName));
             FileChannel fileChannel = fos.getChannel();

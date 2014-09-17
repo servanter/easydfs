@@ -78,7 +78,7 @@ public class EasyDFSClient {
                             channel.register(selector, SelectionKey.OP_READ);
                         } else if (key.isReadable()) {
                             try {
-                                 dispatchHandler( key);
+                                dispatchHandler(key);
                             } catch (Exception e) {
                                 key.cancel();
                                 e.printStackTrace();
@@ -100,29 +100,21 @@ public class EasyDFSClient {
          */
         private void dispatchHandler(SelectionKey key) throws Exception {
             SocketChannel channel = (SocketChannel) key.channel();
-            
+
             try {
-             // the code capacity 100 bytes
-                int capacity = 100;
-                byte[] fileBytes = new byte[100];
-                String code = "";
-                ByteBuffer buffer = ByteBuffer.allocate(capacity);
-                if (channel.read(buffer) > 0) {
-                    buffer.flip();
-                    buffer.get(fileBytes);
-                    buffer.clear();
-                }
-                code = new String(fileBytes).trim();
-                if(code.length() > 0) {
+
+                // the code capacity 100 bytes
+                String code = ChannelUtils.readTop100(channel);
+                if (code.length() > 0) {
                     System.out.println("Client receive the code: " + code);
-                    
+
                     if (NumberUtils.isInteger(code)) {
-                        
+
                         // is sign code
                         Code sign = Code.codeConvert(Integer.parseInt(code));
                         codeHandler(sign, channel);
                     } else {
-                        
+
                         // is file
                         File file = fileHandler(code, channel);
                         write(file);
@@ -142,29 +134,13 @@ public class EasyDFSClient {
          */
         private void codeHandler(Code sign, SocketChannel channel) throws Exception {
             switch (sign) {
-            
+
             // server monitor client
             case SERVER_HEARTBEAT:
-                String name = String.valueOf(Code.CLIENT_HEARTBEAT.getCode());
-                StringBuilder builder = new StringBuilder();
-                if (name.length() < 100) {
-                    for (int i = 0; i < 100 - name.length(); i++) {
-                        builder.append(" ");
-                    }
-                }
-                name += builder.toString();
-                channel.write(ByteBuffer.wrap(String.valueOf(name).getBytes()));
+                channel.write(ByteBuffer.wrap(StringUtils.fullSpace(Code.CLIENT_HEARTBEAT.getCode()).getBytes()));
                 break;
             case SYSTEM_CHANNEL:
-                name = String.valueOf(Code.SYSTEM_CHANNEL.getCode());
-                builder = new StringBuilder();
-                if (name.length() < 100) {
-                    for (int i = 0; i < 100 - name.length(); i++) {
-                        builder.append(" ");
-                    }
-                }
-                name += builder.toString();
-                channel.write(ByteBuffer.wrap(String.valueOf(name).getBytes()));
+                channel.write(ByteBuffer.wrap(StringUtils.fullSpace(Code.SYSTEM_CHANNEL.getCode()).getBytes()));
                 break;
             case OPT_DOWNLOAD_REQUEST_CLIENT:
                 handlerDownload(channel);
@@ -191,14 +167,14 @@ public class EasyDFSClient {
                     return false;
                 }
             });
-            if(fs != null && fs.length > 0) {
+            if (fs != null && fs.length > 0) {
                 java.io.File f = fs[0];
                 byte[] returnCode = StringUtils.fullSpace(Code.OPT_DOWNLOAD_FOUND_FILE.getCode()).getBytes();
                 byte[] fileNameBytes = StringUtils.fullSpace(fileName).getBytes();
                 byte[] fileContent = FileUtils.readFile(f.getAbsoluteFile());
                 byte[] fileLength = StringUtils.fullSpace(fileContent.length).getBytes();
                 byte[] array = new byte[returnCode.length + fileNameBytes.length + fileLength.length + fileContent.length];
-                
+
                 // sequence code, filename, length, content
                 ArrayUtils.arrayBytesCopy(returnCode, array, 0);
                 ArrayUtils.arrayBytesCopy(fileNameBytes, array, returnCode.length);
@@ -206,7 +182,7 @@ public class EasyDFSClient {
                 ArrayUtils.arrayBytesCopy(fileContent, array, returnCode.length + fileNameBytes.length + fileLength.length);
                 channel.write(ByteBuffer.wrap(array));
             }
-            
+
         }
 
         /**
@@ -230,85 +206,14 @@ public class EasyDFSClient {
          * @throws Exception
          */
         private File fileHandler(String fileName, SocketChannel channel) throws Exception {
-            int capacity = 100;
-            byte[] fileBytes = new byte[100];
-            String length = "";
-            ByteBuffer buffer = ByteBuffer.allocate(capacity);
-            if (channel.read(buffer) > 0) {
-                buffer.flip();
-                buffer.get(fileBytes);
-                buffer.clear();
-            }
-            length = new String(fileBytes).trim();
-            if(NumberUtils.isInteger(length)) {
-                
-                ByteBuffer dataBuffer = ByteBuffer.allocate(1024);
-                int contentLength = 0;
-                int size = -1;
-                byte[] bytes = null;
-                ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-                while ((size = channel.read(dataBuffer)) >= 0) {
-                    contentLength += size;
-                    dataBuffer.flip();
-                    bytes = new byte[size];  
-                    dataBuffer.get(bytes);
-                    byteArrayOutputStream.write(bytes);
-                    dataBuffer.clear();
-                    if(contentLength >= Integer.parseInt(length)) {
-                        break;
-                    }
-                }
-                
-                
-                // channel.close();
-                byte[] byteArray = byteArrayOutputStream.toByteArray();
-                byteArrayOutputStream.close();
-                return new File(fileName, contentLength, byteArray);
+            String length = ChannelUtils.readTop100(channel);
+            if (NumberUtils.isInteger(length)) {
+                byte[] byteArray = ChannelUtils.readFile(channel, Integer.parseInt(length));
+                return new File(fileName, Integer.parseInt(length), byteArray);
             }
             return null;
         }
 
-    }
-
-    /**
-     * send file to shard
-     * 
-     * @param file
-     */
-    private void send(String fileFolder, String fileName, SocketChannel channel) throws Exception {
-        System.out.println(2222222);
-        StringBuilder builder = new StringBuilder();
-        if (fileName.length() < 100) {
-            for (int i = 0; i < 100 - fileName.length(); i++) {
-                builder.append(" ");
-            }
-        }
-        String fileAllName = fileName + builder.toString();
-        byte[] fileNameBytes = fileAllName.getBytes();
-        ByteBuffer buffer = ByteBuffer.allocate(1024);
-        FileInputStream fis = new FileInputStream(new java.io.File(fileFolder + fileName));
-        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-        FileChannel fileChannel = fis.getChannel();
-        int size = 0;
-        while ((size = fileChannel.read(buffer)) > 0) {
-            buffer.flip();
-            buffer.limit(size);
-            byteArrayOutputStream.write(buffer.array());
-            buffer.clear();
-        }
-        byte[] byteArray = byteArrayOutputStream.toByteArray();
-        byte[] data = new byte[fileNameBytes.length + byteArray.length];
-        for (int i = 0; i < fileNameBytes.length; i++) {
-            data[i] = fileNameBytes[i];
-        }
-        int index = 0;
-        for (int i = fileNameBytes.length; i < data.length; i++) {
-            data[i] = byteArray[index];
-            index++;
-        }
-
-        channel.write(ByteBuffer.wrap(data));
-        byteArrayOutputStream.close();
     }
 
 }
