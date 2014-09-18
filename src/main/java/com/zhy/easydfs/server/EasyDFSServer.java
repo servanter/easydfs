@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Timer;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 
 import javax.xml.ws.handler.MessageContext.Scope;
@@ -134,10 +135,14 @@ public class EasyDFSServer {
     }
 
     public static void main(String[] args) {
+        if(args == null || args.length < 2) {
+            System.err.println("Please input the shareds and server folder.");
+            System.exit(-1);
+        }
         if (args != null && args.length > 0) {
             SHAREDS = Integer.parseInt(args[0].replace("-shareds=", ""));
         }
-        if (args != null && args.length > 0) {
+        if (args != null && args.length > 1) {
             SERVER_FOLDER = args[1].replace("-folder=", "");
         }
         Timer timer = new Timer();
@@ -274,7 +279,7 @@ public class EasyDFSServer {
                         allHasRepli = false;
                         List<SocketChannel> reList = new ArrayList<SocketChannel>();
                         reList.add(channel);
-                        System.out.println("As replication channel: " + channel.socket().getRemoteSocketAddress() + " of " + sharedKey + "shared channel---");
+                        System.out.println("As replication channel: " + channel.socket().getRemoteSocketAddress() + " of " + sharedKey + " shared channel---");
                         replicationChannels.put(sharedKey, reList);
                         break;
                     }
@@ -297,6 +302,7 @@ public class EasyDFSServer {
                     }
                     List<SocketChannel> chs = replicationChannels.get(smallSharedKey);
                     if (chs != null) {
+                        System.out.println("As replication channel: " + channel.socket().getRemoteSocketAddress() + " of " + smallSharedKey + " shared channel---");
                         chs.add(channel);
                     }
                 }
@@ -641,12 +647,75 @@ public class EasyDFSServer {
         synchronized (serverChannel) {
 
             List<String> keys = new ArrayList(sharedChannels.keySet());
-            for (String key : keys) {
+            for (int i = 0; i < keys.size(); i++) {
+                String key = keys.get(i);
                 if (!aliveSharedChannels.containsKey(key)) {
                     if (badChannels.containsKey(key)) {
                         int badConnectionCount = badChannels.get(key) + 1;
                         if (badConnectionCount >= 3) {
                             sharedChannels.remove(key);
+                            
+                            // replication instead of shared
+                            List<SocketChannel> replis = replicationChannels.get(key);
+                            if(replis != null && !replis.isEmpty()) {
+                                for(SocketChannel s : replis) {
+                                    String currentRepliKey = s.socket().getRemoteSocketAddress().toString();
+                                    if(badChannels.containsKey(currentRepliKey)) {
+                                        
+                                        // judge if the this replication was a bad channel but the bad count < 2 is valid
+                                        if(badChannels.get(currentRepliKey) < 2) {
+                                           
+                                            // replace the shared
+                                            List<SocketChannel> insteadChannels = new ArrayList<SocketChannel>();
+                                            LinkedHashMap<String, SocketChannel> insteadSharedChannels = new LinkedHashMap<String, SocketChannel>();
+                                            for(int j = 0; j < keys.size(); j++) {
+                                                String k = keys.get(j);
+                                                if(j == i) {
+                                                    
+                                                    // instead bad channel
+                                                    insteadSharedChannels.put(currentRepliKey, s);
+                                                } else {
+                                                    insteadSharedChannels.put(k, sharedChannels.get(k));
+                                                }
+                                            }
+                                            sharedChannels = insteadSharedChannels;
+                                            
+                                            // Remove old key and set new key
+                                            System.out.println("replication ---> " + currentRepliKey + " Instead of " + key);
+                                            List<SocketChannel> oldSharedChannels = replicationChannels.remove(key);
+                                            replicationChannels.put(currentRepliKey, oldSharedChannels);
+                                            break;
+                                        }
+                                    } else {
+                                        
+                                        // this replication is avaliable
+                                        // replace the shared
+                                        List<SocketChannel> insteadChannels = new ArrayList<SocketChannel>();
+                                        LinkedHashMap<String, SocketChannel> insteadSharedChannels = new LinkedHashMap<String, SocketChannel>();
+                                        for (int j = 0; j < keys.size(); j++) {
+                                            String k = keys.get(j);
+                                            if (j == i) {
+
+                                                // instead bad channel
+                                                insteadSharedChannels.put(currentRepliKey, s);
+                                            } else {
+                                                insteadSharedChannels.put(k, sharedChannels.get(k));
+                                            }
+                                        }
+                                        sharedChannels = insteadSharedChannels;
+
+                                        // Remove old key and set new key
+                                        System.out.println("replication ---> " + currentRepliKey + " Instead of " + key);
+                                        List<SocketChannel> oldSharedChannels = replicationChannels.remove(key);
+                                        replicationChannels.put(currentRepliKey, oldSharedChannels);
+                                        break;
+                                    }
+                                }
+                            } else {
+                                
+                                // the shared no replis maybe current server should be down
+                                System.out.println("need down");
+                            }
                         } else {
                             badChannels.put(key, badConnectionCount);
                             System.out.println("bad connection is " + key + " count :" + badConnectionCount);

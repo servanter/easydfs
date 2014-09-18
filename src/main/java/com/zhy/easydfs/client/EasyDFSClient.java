@@ -1,7 +1,5 @@
 package com.zhy.easydfs.client;
 
-import java.io.ByteArrayOutputStream;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.FilenameFilter;
 import java.net.InetSocketAddress;
@@ -30,9 +28,10 @@ public class EasyDFSClient {
     public static void main(String[] args) {
         try {
             if (args == null || args.length == 0) {
+                System.err.println("Please input client store folder.");
                 System.exit(0);
             }
-            CLIENT_STORE_PATH = args[0];
+            CLIENT_STORE_PATH = args[0].replace("-folder=", "");
             DFSClientHandleThread clientHandleThread = new DFSClientHandleThread();
             clientHandleThread.init();
             new Thread(clientHandleThread).start();
