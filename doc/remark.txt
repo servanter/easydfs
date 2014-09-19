@@ -1,1 +1,4 @@
-1. 有一个主要的client。启动后,不同步其他的shared
+1. 备份同步：server端收到上传文件命令，发送给shared之前，那么需要记录版本及内容，以后追加该文件。replication进行sync时，只需要读取他的版本与当前server版本内容相比较，找出所需要的file，
+    1)然后发给shared getfile命令取文件回传给replication，
+    2)在server端保留文件传给该replication
+ 并在replication中记录当前版本，最后删除该版本文件。

@@ -12,6 +12,7 @@ import java.util.Iterator;
 
 import com.zhy.easydfs.constants.Code;
 import com.zhy.easydfs.file.File;
+import com.zhy.easydfs.server.FileOpt;
 import com.zhy.easydfs.util.ArrayUtils;
 import com.zhy.easydfs.util.ChannelUtils;
 import com.zhy.easydfs.util.FileUtils;
@@ -205,14 +206,26 @@ public class EasyDFSClient {
          * @throws Exception
          */
         private File fileHandler(String fileName, SocketChannel channel) throws Exception {
+            String version = ChannelUtils.readTop100(channel);
             String length = ChannelUtils.readTop100(channel);
             if (NumberUtils.isInteger(length)) {
                 byte[] byteArray = ChannelUtils.readFile(channel, Integer.parseInt(length));
+                storeVersionFile(version, CLIENT_STORE_PATH);
                 return new File(fileName, Integer.parseInt(length), byteArray);
             }
             return null;
         }
 
+        /**
+         * store server send version
+         * 
+         * @param version
+         * @param path
+         */
+        private void storeVersionFile(String version, String path) {
+            String versionFile = "current.version";
+            new Thread(new FileOpt(new java.io.File(path + versionFile), version)).start();
+        }
     }
 
 }

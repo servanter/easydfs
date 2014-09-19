@@ -5,6 +5,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -21,32 +22,18 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Timer;
-import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
-
-import javax.xml.ws.handler.MessageContext.Scope;
 
 import com.zhy.easydfs.constants.Code;
 import com.zhy.easydfs.file.File;
 import com.zhy.easydfs.util.ArrayUtils;
 import com.zhy.easydfs.util.ChannelUtils;
-import com.zhy.easydfs.util.FileUtils;
 import com.zhy.easydfs.util.NumberUtils;
 import com.zhy.easydfs.util.StringUtils;
 import com.zhy.easydfs.util.TemplateUtils;
 
 /**
  * server
- * 
- * @author zhanghongyan
- * 
- */
-/**
- *
- * @author zhanghongyan
- *
- */
-/**
  * 
  * @author zhanghongyan
  * 
@@ -345,24 +332,21 @@ public class EasyDFSServer {
                     SocketChannel currentChannel = sharedChannels.get(currentKey);
                     currentChannel.register(selector, SelectionKey.OP_READ);
 
-                    // create version
-                    // File version = createVersionFile(file.getFileName(), currentKey);
-
-                    // send shared channel version
-                    // send(version, currentChannel);
-
+                    // create file and get version
+                     String version = createVersionFile(file.getFileName(), shard);
+                     
                     // send shared channel
-                    send(file, currentChannel);
+                    send(file, version, currentChannel);
                     System.out.println("Sended to shared :" + currentKey);
 
                     // send the shared channel replication
-                    List<SocketChannel> replications = replicationChannels.get(currentKey);
-                    if (replications != null) {
-                        for (SocketChannel socketChannel : replications) {
-                            send(file, socketChannel);
-                            System.out.println("Sended to replication :" + socketChannel.socket().getRemoteSocketAddress());
-                        }
-                    }
+//                    List<SocketChannel> replications = replicationChannels.get(currentKey);
+//                    if (replications != null) {
+//                        for (SocketChannel socketChannel : replications) {
+//                            send(file,version, socketChannel);
+//                            System.out.println("Sended to replication :" + socketChannel.socket().getRemoteSocketAddress());
+//                        }
+//                    }
 
                     // send upload success identification
                     send(Code.OPT_UPLOAD_SUCCESS, channel);
@@ -386,7 +370,8 @@ public class EasyDFSServer {
      */
     private void createIndexFile(int shard, String fileName) {
         String sharedIndexFilePath = SERVER_FOLDER + shard + ".index";
-        Thread appendIndexFileThread = new Thread(new IndexFileHandler(new java.io.File(sharedIndexFilePath), fileName));
+        String str = fileName + "\r\n";
+        Thread appendIndexFileThread = new Thread(new FileOpt(new java.io.File(sharedIndexFilePath), str));
         appendIndexFileThread.start();
     }
 
@@ -394,15 +379,18 @@ public class EasyDFSServer {
      * create version file
      * 
      * @param fileName
-     * @return
+     * @return current version 
      */
-    private File createVersionFile(String fileName, String shared) {
+    private String createVersionFile(String fileName, int shared) {
         String time = String.valueOf(System.currentTimeMillis()).substring(0, 10);
-        File file = new File();
-        String content = "fileName:" + fileName + "\r\n" + "version:" + time;
-        file.setContents(content.getBytes());
-        file.setFileName("version");
-        return file;
+        String file = shared + ".version";
+        StringBuilder builder = new StringBuilder();
+        String version = "V." + time;
+        builder.append(version + "\r\n");
+        builder.append("A " + fileName + "\r\n");
+        String text = builder.toString();
+        new Thread(new FileOpt(new java.io.File(SERVER_FOLDER + file), text)).start();
+        return version;
     }
 
     /**
@@ -571,16 +559,18 @@ public class EasyDFSServer {
      * 
      * @param file
      */
-    private void send(File file, SocketChannel channel) throws Exception {
+    private void send(File file, String version, SocketChannel channel) throws Exception {
         String fileName = file.getFileName();
         byte[] fileNameBytes = StringUtils.fullSpace(fileName).getBytes();
+        byte[] versionBytes = StringUtils.fullSpace(version).getBytes();
         byte[] contents = file.getContents();
         byte[] lengthBytes = StringUtils.fullSpace(file.getContents().length).getBytes();
-        byte[] array = new byte[fileNameBytes.length + lengthBytes.length + contents.length];
-
+        byte[] array = new byte[fileNameBytes.length + versionBytes.length + lengthBytes.length + contents.length];
+        
         ArrayUtils.arrayBytesCopy(fileNameBytes, array, 0);
-        ArrayUtils.arrayBytesCopy(lengthBytes, array, fileNameBytes.length);
-        ArrayUtils.arrayBytesCopy(contents, array, fileNameBytes.length + lengthBytes.length);
+        ArrayUtils.arrayBytesCopy(versionBytes, array, fileNameBytes.length);
+        ArrayUtils.arrayBytesCopy(lengthBytes, array, versionBytes.length + fileNameBytes.length);
+        ArrayUtils.arrayBytesCopy(contents, array, versionBytes.length + fileNameBytes.length + lengthBytes.length);
         channel.write(ByteBuffer.wrap(array));
         channel.register(selector, SelectionKey.OP_READ);
     }
@@ -666,7 +656,6 @@ public class EasyDFSServer {
                                         if(badChannels.get(currentRepliKey) < 2) {
                                            
                                             // replace the shared
-                                            List<SocketChannel> insteadChannels = new ArrayList<SocketChannel>();
                                             LinkedHashMap<String, SocketChannel> insteadSharedChannels = new LinkedHashMap<String, SocketChannel>();
                                             for(int j = 0; j < keys.size(); j++) {
                                                 String k = keys.get(j);
@@ -690,7 +679,6 @@ public class EasyDFSServer {
                                         
                                         // this replication is avaliable
                                         // replace the shared
-                                        List<SocketChannel> insteadChannels = new ArrayList<SocketChannel>();
                                         LinkedHashMap<String, SocketChannel> insteadSharedChannels = new LinkedHashMap<String, SocketChannel>();
                                         for (int j = 0; j < keys.size(); j++) {
                                             String k = keys.get(j);

@@ -19,7 +19,7 @@ public class EasyDFSUpload {
     public static void main(String[] args) {
         try {
             EasyDFSUpload dfsUpload = new EasyDFSUpload();
-            boolean isSuccess = dfsUpload.upload("D:\\", "7777.jar");
+            boolean isSuccess = dfsUpload.upload("D:\\", "sl_usedcar.shtml");
             System.out.println("upload is " + isSuccess);
         } catch (Exception e) {
             e.printStackTrace();

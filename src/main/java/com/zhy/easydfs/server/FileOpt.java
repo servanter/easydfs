@@ -4,24 +4,24 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 
-public class IndexFileHandler implements Runnable {
+public class FileOpt implements Runnable {
 
     private File file;
 
     private String text;
 
-    public IndexFileHandler(File file, String text) {
+    public FileOpt(File file, String text) {
         this.file = file;
         this.text = text;
     }
 
     @Override
     public void run() {
-        synchronized (IndexFileHandler.class) {
+        synchronized (FileOpt.class) {
             FileWriter fileWriter = null;
             try {
                 fileWriter = new FileWriter(file, true);
-                fileWriter.write(text + "\r\n");
+                fileWriter.write(text);
             } catch (IOException e) {
                 e.printStackTrace();
             } finally {
