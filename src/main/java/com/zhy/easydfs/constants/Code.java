@@ -32,6 +32,21 @@ public enum Code {
      * client return message
      */
     CLIENT_HEARTBEAT(20002),
+    
+    /**
+     * server request shared index file
+     */
+    SERVER_SYNC_SHARED_INDEX_FILE(20011),
+    
+    /**
+     * server request shared index file, the shared return success
+     */
+    SERVER_SYNC_SHARED_INDEX_FILE_SUCCESS(20012),
+    
+    /**
+     * server request shared index file, the shared hasn't files
+     */
+    SERVER_SYNC_SHARED_INDEX_FILE_EMPTY(20013),
 
     /**
      * request download

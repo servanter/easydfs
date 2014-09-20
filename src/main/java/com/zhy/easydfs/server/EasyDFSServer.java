@@ -4,14 +4,11 @@ import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
@@ -28,6 +25,7 @@ import com.zhy.easydfs.constants.Code;
 import com.zhy.easydfs.file.File;
 import com.zhy.easydfs.util.ArrayUtils;
 import com.zhy.easydfs.util.ChannelUtils;
+import com.zhy.easydfs.util.FileUtils;
 import com.zhy.easydfs.util.NumberUtils;
 import com.zhy.easydfs.util.StringUtils;
 import com.zhy.easydfs.util.TemplateUtils;
@@ -155,7 +153,6 @@ public class EasyDFSServer {
         serverChannel.socket().bind(new InetSocketAddress(SERVER_HOST, SERVER_PORT));
         selector = Selector.open();
         serverChannel.register(selector, SelectionKey.OP_ACCEPT);
-        initFileText();
     }
 
     /**
@@ -177,24 +174,28 @@ public class EasyDFSServer {
             for (java.io.File f : files) {
                 String fileName = f.getName();
                 String prefix = fileName.substring(0, fileName.indexOf("."));
-                BufferedReader reader = null;
-                try {
-                    reader = new BufferedReader(new InputStreamReader(new FileInputStream(f.getAbsoluteFile())));
-                    String str = null;
-                    List<String> text = new ArrayList<String>();
-                    while ((str = reader.readLine()) != null) {
-                        text.add(str);
-                    }
-                    sharedIndexed.put(Integer.parseInt(prefix), text);
-                } catch (FileNotFoundException e) {
-                    e.printStackTrace();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                } finally {
+                
+                // add new file index
+                if(!sharedIndexed.containsKey(prefix)) {
+                    BufferedReader reader = null;
                     try {
-                        reader.close();
+                        reader = new BufferedReader(new InputStreamReader(new FileInputStream(f.getAbsoluteFile())));
+                        String str = null;
+                        List<String> text = new ArrayList<String>();
+                        while ((str = reader.readLine()) != null) {
+                            text.add(str);
+                        }
+                        sharedIndexed.put(Integer.parseInt(prefix), text);
+                    } catch (FileNotFoundException e) {
+                        e.printStackTrace();
                     } catch (IOException e) {
                         e.printStackTrace();
+                    } finally {
+                        try {
+                            reader.close();
+                        } catch (IOException e) {
+                            e.printStackTrace();
+                        }
                     }
                 }
             }
@@ -212,7 +213,7 @@ public class EasyDFSServer {
             Iterator<SelectionKey> keys = selector.selectedKeys().iterator();
             while (keys.hasNext()) {
                 SelectionKey key = keys.next();
-                if (key.isAcceptable()) {
+                if (key.channel().isOpen() && key.isAcceptable()) {
                     keys.remove();
 
                     // client request to accpect
@@ -221,7 +222,7 @@ public class EasyDFSServer {
                     channel.configureBlocking(false);
                     channel.register(selector, SelectionKey.OP_READ);
                     System.out.println("Server receive client connection request " + channel.socket().getRemoteSocketAddress().toString());
-                } else if (key.isReadable()) {
+                } else if (key.channel().isOpen() &&key.isReadable()) {
                     try {
                         dispatchHandler(key);
                     } catch (Exception e) {
@@ -322,36 +323,27 @@ public class EasyDFSServer {
 
                     // is file
                     File file = fileHandler(code, channel);
-                    write(file, SERVER_FOLDER);
+//                    write(file, SERVER_FOLDER);
 
                     // shard and replication
                     int hashCode = file.hashCode();
-                    int shard = hashCode % sharedChannels.size();
+                    int shared = hashCode % sharedChannels.size();
                     List<String> sharedKeys = new ArrayList(sharedChannels.keySet());
-                    String currentKey = sharedKeys.get(shard);
+                    String currentKey = sharedKeys.get(shared);
                     SocketChannel currentChannel = sharedChannels.get(currentKey);
                     currentChannel.register(selector, SelectionKey.OP_READ);
-
-                    // create file and get version
-                     String version = createVersionFile(file.getFileName(), shard);
                      
                     // send shared channel
-                    send(file, version, currentChannel);
+                    send(file, currentChannel);
                     System.out.println("Sended to shared :" + currentKey);
-
-                    // send the shared channel replication
-//                    List<SocketChannel> replications = replicationChannels.get(currentKey);
-//                    if (replications != null) {
-//                        for (SocketChannel socketChannel : replications) {
-//                            send(file,version, socketChannel);
-//                            System.out.println("Sended to replication :" + socketChannel.socket().getRemoteSocketAddress());
-//                        }
-//                    }
 
                     // send upload success identification
                     send(Code.OPT_UPLOAD_SUCCESS, channel);
                     channel.close();
-                    createIndexFile(shard, file.getFileName());
+                    
+                    // file index list only store cache, the index file is not necessary store file
+                    fileNameInCache(shared, file.getFileName());
+//                    createIndexFile(shard, file.getFileName());
                 }
 
             }
@@ -360,6 +352,17 @@ public class EasyDFSServer {
             throw new Exception(e);
         }
 
+    }
+
+    /**
+     * Upload file name in cache. Must wait for the shared file list return in the future  
+     * @param shared
+     * @param fileName
+     */
+    private void fileNameInCache(int shared, String fileName) {
+        if(sharedIndexed.containsKey(shared)) {
+            sharedIndexed.get(shared).add(fileName);
+        }
     }
 
     /**
@@ -373,24 +376,6 @@ public class EasyDFSServer {
         String str = fileName + "\r\n";
         Thread appendIndexFileThread = new Thread(new FileOpt(new java.io.File(sharedIndexFilePath), str));
         appendIndexFileThread.start();
-    }
-
-    /**
-     * create version file
-     * 
-     * @param fileName
-     * @return current version 
-     */
-    private String createVersionFile(String fileName, int shared) {
-        String time = String.valueOf(System.currentTimeMillis()).substring(0, 10);
-        String file = shared + ".version";
-        StringBuilder builder = new StringBuilder();
-        String version = "V." + time;
-        builder.append(version + "\r\n");
-        builder.append("A " + fileName + "\r\n");
-        String text = builder.toString();
-        new Thread(new FileOpt(new java.io.File(SERVER_FOLDER + file), text)).start();
-        return version;
     }
 
     /**
@@ -418,10 +403,70 @@ public class EasyDFSServer {
             break;
         case OPT_DOWNLOAD:
             handlerDownload(channel);
+            break;
         case OPT_DOWNLOAD_FOUND_FILE:
             handlerDownloadOver(channel);
+            break;
+        case SERVER_SYNC_SHARED_INDEX_FILE_SUCCESS:
+            handlerSharedSync(channel);
+            break;
+        case SERVER_SYNC_SHARED_INDEX_FILE_EMPTY:
+            handlerSharedSyncEmpty(channel);
         default:
             break;
+        }
+    }
+
+    private void handlerSharedSyncEmpty(SocketChannel channel) {
+        try {
+            String name = channel.socket().getRemoteSocketAddress().toString();
+            if(sharedChannels.containsKey(name)) {
+                List<String> keys = new ArrayList<String>(sharedChannels.keySet());
+                int index = 0;
+                for(String key : keys) {
+                    if(name.equals(key)) {
+                        break;
+                    }
+                    index++;
+                }
+                
+                // put empty file list
+                sharedIndexed.put(index, new ArrayList<String>());
+                String indexName = index + ".index";
+                FileUtils.writeFile(SERVER_FOLDER + indexName, new String("").getBytes(), false);
+                System.out.println("Create file index: " + indexName);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * handler shared clinet file index
+     * @param channel
+     */
+    private void handlerSharedSync(SocketChannel channel) {
+        try {
+            String name = channel.socket().getRemoteSocketAddress().toString();
+            if(sharedChannels.containsKey(name)) {
+                List<String> keys = new ArrayList<String>(sharedChannels.keySet());
+                int index = 0;
+                for(String key : keys) {
+                    if(name.equals(key)) {
+                        break;
+                    }
+                    index++;
+                }
+                String indexName = index + ".index";
+                String length = ChannelUtils.readTop100(channel);
+                byte[] contents = ChannelUtils.readFile(channel, Integer.parseInt(length));
+                FileUtils.writeFile(SERVER_FOLDER + indexName, contents, false);
+                System.out.println("Create file index: " + indexName);
+                // load file index
+                initFileText();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
@@ -455,7 +500,8 @@ public class EasyDFSServer {
                 List<SocketChannel> chs = downloadChannels.get(fileName);
                 for (SocketChannel c : chs) {
                     c.write(ByteBuffer.wrap(array));
-                    c.socket().shutdownOutput();
+                    c.close();
+                    downloadChannels.remove(fileName);
                 }
 
             }
@@ -559,18 +605,16 @@ public class EasyDFSServer {
      * 
      * @param file
      */
-    private void send(File file, String version, SocketChannel channel) throws Exception {
+    private void send(File file, SocketChannel channel) throws Exception {
         String fileName = file.getFileName();
         byte[] fileNameBytes = StringUtils.fullSpace(fileName).getBytes();
-        byte[] versionBytes = StringUtils.fullSpace(version).getBytes();
         byte[] contents = file.getContents();
         byte[] lengthBytes = StringUtils.fullSpace(file.getContents().length).getBytes();
-        byte[] array = new byte[fileNameBytes.length + versionBytes.length + lengthBytes.length + contents.length];
+        byte[] array = new byte[fileNameBytes.length + lengthBytes.length + contents.length];
         
         ArrayUtils.arrayBytesCopy(fileNameBytes, array, 0);
-        ArrayUtils.arrayBytesCopy(versionBytes, array, fileNameBytes.length);
-        ArrayUtils.arrayBytesCopy(lengthBytes, array, versionBytes.length + fileNameBytes.length);
-        ArrayUtils.arrayBytesCopy(contents, array, versionBytes.length + fileNameBytes.length + lengthBytes.length);
+        ArrayUtils.arrayBytesCopy(lengthBytes, array, fileNameBytes.length);
+        ArrayUtils.arrayBytesCopy(contents, array, fileNameBytes.length + lengthBytes.length);
         channel.write(ByteBuffer.wrap(array));
         channel.register(selector, SelectionKey.OP_READ);
     }
@@ -584,20 +628,6 @@ public class EasyDFSServer {
      */
     private void send(Code code, SocketChannel channel) throws Exception {
         channel.write(ByteBuffer.wrap(StringUtils.fullSpace(code.getCode()).getBytes()));
-    }
-
-    /**
-     * persistence the data
-     * 
-     * @param file
-     */
-    private void write(File file, String folder) throws Exception {
-        FileOutputStream fos = new FileOutputStream(new java.io.File(folder + file.getFileName()));
-        FileChannel fileChannel = fos.getChannel();
-        ByteBuffer buffer = ByteBuffer.wrap(file.getContents());
-        fileChannel.write(buffer);
-        fileChannel.close();
-        fos.close();
     }
 
     /**
@@ -655,47 +685,14 @@ public class EasyDFSServer {
                                         // judge if the this replication was a bad channel but the bad count < 2 is valid
                                         if(badChannels.get(currentRepliKey) < 2) {
                                            
-                                            // replace the shared
-                                            LinkedHashMap<String, SocketChannel> insteadSharedChannels = new LinkedHashMap<String, SocketChannel>();
-                                            for(int j = 0; j < keys.size(); j++) {
-                                                String k = keys.get(j);
-                                                if(j == i) {
-                                                    
-                                                    // instead bad channel
-                                                    insteadSharedChannels.put(currentRepliKey, s);
-                                                } else {
-                                                    insteadSharedChannels.put(k, sharedChannels.get(k));
-                                                }
-                                            }
-                                            sharedChannels = insteadSharedChannels;
-                                            
-                                            // Remove old key and set new key
-                                            System.out.println("replication ---> " + currentRepliKey + " Instead of " + key);
-                                            List<SocketChannel> oldSharedChannels = replicationChannels.remove(key);
-                                            replicationChannels.put(currentRepliKey, oldSharedChannels);
+                                            insteadShared(keys, i, key, s, currentRepliKey);
                                             break;
                                         }
                                     } else {
                                         
                                         // this replication is avaliable
                                         // replace the shared
-                                        LinkedHashMap<String, SocketChannel> insteadSharedChannels = new LinkedHashMap<String, SocketChannel>();
-                                        for (int j = 0; j < keys.size(); j++) {
-                                            String k = keys.get(j);
-                                            if (j == i) {
-
-                                                // instead bad channel
-                                                insteadSharedChannels.put(currentRepliKey, s);
-                                            } else {
-                                                insteadSharedChannels.put(k, sharedChannels.get(k));
-                                            }
-                                        }
-                                        sharedChannels = insteadSharedChannels;
-
-                                        // Remove old key and set new key
-                                        System.out.println("replication ---> " + currentRepliKey + " Instead of " + key);
-                                        List<SocketChannel> oldSharedChannels = replicationChannels.remove(key);
-                                        replicationChannels.put(currentRepliKey, oldSharedChannels);
+                                        insteadShared(keys, i, key, s, currentRepliKey);
                                         break;
                                     }
                                 }
@@ -715,7 +712,9 @@ public class EasyDFSServer {
                 }
             }
             System.out.println("current shareds size:" + sharedChannels.size());
-
+            
+            // get shared file index
+            syncSharedFileIndex();
             List<String> replisKeys = new ArrayList<String>();
             Iterator<List<SocketChannel>> scs = replicationChannels.values().iterator();
             while (scs.hasNext()) {
@@ -765,6 +764,35 @@ public class EasyDFSServer {
     }
 
     /**
+     * replication instead shared
+     * 
+     * @param keys
+     * @param i
+     * @param key
+     * @param s
+     * @param currentRepliKey
+     */
+    private void insteadShared(List<String> keys, int i, String key, SocketChannel s, String currentRepliKey) {
+        LinkedHashMap<String, SocketChannel> insteadSharedChannels = new LinkedHashMap<String, SocketChannel>();
+        for (int j = 0; j < keys.size(); j++) {
+            String k = keys.get(j);
+            if (j == i) {
+
+                // instead bad channel
+                insteadSharedChannels.put(currentRepliKey, s);
+            } else {
+                insteadSharedChannels.put(k, sharedChannels.get(k));
+            }
+        }
+        sharedChannels = insteadSharedChannels;
+
+        // Remove old key and set new key
+        System.out.println("replication ---> " + currentRepliKey + " Instead of " + key);
+        List<SocketChannel> oldSharedChannels = replicationChannels.remove(key);
+        replicationChannels.put(currentRepliKey, oldSharedChannels);
+    }
+
+    /**
      * boardCast every channel
      * 
      * @throws Exception
@@ -798,6 +826,44 @@ public class EasyDFSServer {
                     }
                 }
             }
+        }
+    }
+    
+    
+    /**
+     * sync shared file index
+     */
+    private void syncSharedFileIndex() {
+        try {
+            if(!sharedChannels.isEmpty()) {
+                
+                List<String> keys = new ArrayList<String>();
+                // if file index list < current shared channels size, maybe some channels no return
+                if(sharedIndexed.size() < sharedChannels.size()) {
+                    List<Integer> ids = new ArrayList<Integer>(sharedIndexed.keySet());
+                    if(ids.size() == 0) {
+                        keys = new ArrayList<String>(sharedChannels.keySet());
+                    } else {
+                        
+                        List<String> sharedChannelKeys = new ArrayList<String>(sharedChannels.keySet());
+                        // according to shared index list sequece to find channels which need to get file index
+                        int max = sharedChannels.size();
+                        for(int i = 0; i < max; i++) {
+                            if(!ids.contains(i)) {
+                                keys.add(sharedChannelKeys.get(i));
+                            }
+                        }
+                    }
+                }
+                
+                for(String key : keys) {
+                    SocketChannel channel = sharedChannels.get(key);
+                    System.out.println("Server sync shared file index: " + channel.socket().getRemoteSocketAddress());
+                    send(Code.SERVER_SYNC_SHARED_INDEX_FILE, channel);
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 

@@ -58,4 +58,26 @@ public class ChannelUtils {
         byteArrayOutputStream.close();
         return byteArray;
     }
+
+    /**
+     * send str
+     * 
+     * @param channel
+     * @param str
+     * @throws Exception
+     */
+    public static void write(SocketChannel channel, String str) throws Exception {
+        channel.write(ByteBuffer.wrap(str.getBytes()));
+    }
+
+    /**
+     * send str
+     * 
+     * @param channel
+     * @param contents
+     * @throws Exception
+     */
+    public static void write(SocketChannel channel, byte[] contents) throws Exception {
+        channel.write(ByteBuffer.wrap(contents));
+    }
 }

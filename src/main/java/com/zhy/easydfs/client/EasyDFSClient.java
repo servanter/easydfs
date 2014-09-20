@@ -144,9 +144,48 @@ public class EasyDFSClient {
                 break;
             case OPT_DOWNLOAD_REQUEST_CLIENT:
                 handlerDownload(channel);
+            case SERVER_SYNC_SHARED_INDEX_FILE:
+                handlerServerSync(channel);
             default:
                 break;
             }
+        }
+
+        /**
+         * server file index sync (load client file index)
+         * 
+         * @param channel
+         */
+        private void handlerServerSync(SocketChannel channel) throws Exception {
+            java.io.File file = new java.io.File(CLIENT_STORE_PATH);
+            java.io.File[] files = file.listFiles(new FilenameFilter() {
+                
+                @Override
+                public boolean accept(java.io.File dir, String name) {
+                    return !name.equals("current.version");
+                }
+            });
+            if(files != null && files.length > 0) {
+                StringBuilder builder = new StringBuilder();
+                for(java.io.File f : files) {
+                    builder.append(f.getName() + "\r\n");
+                }
+                byte[] returnCode = StringUtils.fullSpace(Code.SERVER_SYNC_SHARED_INDEX_FILE_SUCCESS.getCode()).getBytes();
+                byte[] fileContent = builder.toString().getBytes();
+                byte[] fileLength = StringUtils.fullSpace(fileContent.length).getBytes();
+                byte[] array = new byte[returnCode.length + fileLength.length + fileContent.length];
+                
+                ArrayUtils.arrayBytesCopy(returnCode, array, 0);
+                ArrayUtils.arrayBytesCopy(fileLength, array, returnCode.length);
+                ArrayUtils.arrayBytesCopy(fileContent, array, returnCode.length + fileLength.length);
+                ChannelUtils.write(channel, array);
+            } else {
+                
+                // not store anyting, but must return code
+                byte[] returnCode = StringUtils.fullSpace(Code.SERVER_SYNC_SHARED_INDEX_FILE_EMPTY.getCode()).getBytes();
+                ChannelUtils.write(channel, returnCode);   
+            }
+            
         }
 
         /**
@@ -206,11 +245,10 @@ public class EasyDFSClient {
          * @throws Exception
          */
         private File fileHandler(String fileName, SocketChannel channel) throws Exception {
-            String version = ChannelUtils.readTop100(channel);
             String length = ChannelUtils.readTop100(channel);
             if (NumberUtils.isInteger(length)) {
                 byte[] byteArray = ChannelUtils.readFile(channel, Integer.parseInt(length));
-                storeVersionFile(version, CLIENT_STORE_PATH);
+                storeVersionFile(fileName, CLIENT_STORE_PATH);
                 return new File(fileName, Integer.parseInt(length), byteArray);
             }
             return null;
@@ -222,9 +260,14 @@ public class EasyDFSClient {
          * @param version
          * @param path
          */
-        private void storeVersionFile(String version, String path) {
+        private void storeVersionFile(String fileName, String path) {
             String versionFile = "current.version";
-            new Thread(new FileOpt(new java.io.File(path + versionFile), version)).start();
+            String time = String.valueOf(System.currentTimeMillis()).substring(0, 10);
+            StringBuilder builder = new StringBuilder();
+            builder.append("V." + time + "\r\n");
+            builder.append("A " + fileName + "\r\n");
+            String text = builder.toString();
+            new Thread(new FileOpt(new java.io.File(path + versionFile), text)).start();
         }
     }
 

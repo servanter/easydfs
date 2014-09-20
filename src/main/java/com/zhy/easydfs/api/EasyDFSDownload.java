@@ -16,7 +16,7 @@ import com.zhy.easydfs.util.TemplateUtils;
 public class EasyDFSDownload {
 
     public static void main(String[] args) {
-        String str = download("listen.rar");
+        String str = download("Timwp_gf.tpc");
         System.out.println(str);
     }
 
