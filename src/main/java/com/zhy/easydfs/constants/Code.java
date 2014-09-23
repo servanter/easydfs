@@ -47,6 +47,36 @@ public enum Code {
      * server request shared index file, the shared hasn't files
      */
     SERVER_SYNC_SHARED_INDEX_FILE_EMPTY(20013),
+    
+    /**
+     * server send a request to every replication and collection current version
+     */
+    SERVER_SEND_REPLICATION_TO_SYNC_SHARED(20021),
+    
+    /**
+     * replication request sync to shared
+     */
+    REPLICATION_SYNC_SHARED(20022),
+    
+    /**
+     * shared receive replication requests
+     */
+    SHARED_RECEIVE_SYNC_AND_SEND_REPLICATION(20023),
+    
+    /**
+     * shared send to repli
+     */
+    SERVER_RECEIVE_SHARED_AND_SEND_TO_REPLICATION(20024),
+    
+    /**
+     * repli receive file success
+     */
+    REPLICATION_RECEIVE_SHARED_SUCCESS(20025),
+    
+    /**
+     * the shared file is locked, Please try again for a moment
+     */
+    SHARED_VERSION_FILE_IS_LOCKED(20029),
 
     /**
      * request download

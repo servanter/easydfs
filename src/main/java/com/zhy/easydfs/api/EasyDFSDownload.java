@@ -16,7 +16,7 @@ import com.zhy.easydfs.util.TemplateUtils;
 public class EasyDFSDownload {
 
     public static void main(String[] args) {
-        String str = download("Timwp_gf.tpc");
+        String str = download("7777.jar");
         System.out.println(str);
     }
 

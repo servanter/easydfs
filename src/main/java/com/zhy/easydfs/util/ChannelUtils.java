@@ -80,4 +80,14 @@ public class ChannelUtils {
     public static void write(SocketChannel channel, byte[] contents) throws Exception {
         channel.write(ByteBuffer.wrap(contents));
     }
+
+    /**
+     * As channel unique key which has socket ip and port
+     * 
+     * @param channel
+     * @return
+     */
+    public static String getUniqueAlias(SocketChannel channel) {
+        return channel.socket().getRemoteSocketAddress().toString();
+    }
 }
