@@ -317,7 +317,7 @@ public class EasyDFSClient {
 
                             // reserve 100 bytes
                             byte[] returnVersion = StringUtils.fullSpace(afterReadingVersion).getBytes();
-                            byte[] instruction = StringUtils.fullSpace(Instructions.ADD).getBytes();
+                            byte[] instruction = StringUtils.fullSpace(Instructions.ADD.getDesc()).getBytes();
                             byte[] fileNameBytes = StringUtils.fullSpace(str.split(" ")[1]).getBytes();
                             byte[] fileContent = FileUtils.readFile(CLIENT_STORE_PATH + str.split(" ")[1]);
                             byte[] fileLength = StringUtils.fullSpace(fileContent.length).getBytes();
