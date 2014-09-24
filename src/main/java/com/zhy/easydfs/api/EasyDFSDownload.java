@@ -16,7 +16,7 @@ import com.zhy.easydfs.util.TemplateUtils;
 public class EasyDFSDownload {
 
     public static void main(String[] args) {
-        String str = download("7777.jar");
+        String str = download("car_info.js");
         System.out.println(str);
     }
 

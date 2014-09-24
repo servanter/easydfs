@@ -7,6 +7,7 @@ import java.io.FileNotFoundException;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.lang.reflect.Array;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
@@ -14,6 +15,7 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -445,13 +447,20 @@ public class EasyDFSServer {
                     }
                     index++;
                 }
-                Map<String, String> versionMap = FileUtils.readFileListLine(SERVER_FOLDER + index + Constants.REPLICATION_VERSION_POST, " ");
+                Map<String, String[]> versionMap = FileUtils.readFileListLine(SERVER_FOLDER + index + Constants.REPLICATION_VERSION_POST, " ");
                 if(versionMap.containsKey(alias)) {
-                    versionMap.put(alias, version);
+                    String arr[] = versionMap.get(alias);
+                    arr[1] = version;
+                    versionMap.put(alias, arr);
                 }
                 StringBuilder builder = new StringBuilder();
-                for(Entry<String, String> e : versionMap.entrySet()) {
-                    builder.append(e.getKey() + " " + e.getValue() + "\r\n");
+                List<String> mapKeys = new ArrayList<String>(versionMap.keySet());
+                for(String key : mapKeys) {
+                    String[] arr = versionMap.get(key);
+                    for(String every : arr) {
+                        builder.append(every + " ");
+                    }
+                    builder.append("\r\n");
                 }
                 FileUtils.writeFile(SERVER_FOLDER + index + Constants.REPLICATION_VERSION_POST, builder.toString().getBytes(), false);
             }
@@ -499,18 +508,24 @@ public class EasyDFSServer {
             
             if(sharedChannels.containsKey(alias)) {
                 List<SocketChannel> replis = replicationChannels.get(alias);
-                Map<String, String> map = FileUtils.readFileListLine(SERVER_FOLDER + index + Constants.REPLICATION_VERSION_POST, " ");
+                Map<String, String[]> map = FileUtils.readFileListLine(SERVER_FOLDER + index + Constants.REPLICATION_VERSION_POST, " ");
                 for(SocketChannel repli : replis) {
                     String key = ChannelUtils.getUniqueAlias(repli);
                     if(map.containsKey(key)) {
                         
                         // the replica is new
-                        if(map.get(key).equals(Constants.NO_VERSION)) {
+                        String[] arr = map.get(key);
+                        if(!arr[2].equals(Constants.REPLICATION_RUNNING)) {
+                            
+                            // This channel is not running.
+                            continue;
+                        }
+                        if(arr[1].equals(Constants.NO_VERSION)) {
                             ChannelUtils.write(repli, array);
                         } else {
                             
                             // judge the replica version
-                            String currentVersion = map.get(key).replace("V.", "");
+                            String currentVersion = arr[1].replace("V.", "");
                             long currentVersionLong = Long.parseLong(currentVersion);
                             long receiveVersionLong = Long.parseLong(version.replace("V.", ""));
                             if(currentVersionLong < receiveVersionLong) {
@@ -556,10 +571,64 @@ public class EasyDFSServer {
                 // record the replication version
                 String currentRepliVersion = ChannelUtils.readTop100(channel);
                 String repliVersion = index + Constants.REPLICATION_VERSION_POST;
-                String content = alias + " " + currentRepliVersion + "\r\n";
+                String content = alias + " " + currentRepliVersion + " " + Constants.REPLICATION_RUNNING + "\r\n";
                 String fileName = SERVER_FOLDER + repliVersion;
+                String smallVersion = currentRepliVersion;     // the replicas smallest version
+                
+                // read the replica version file and write current replica version
+                try {
+                    Map<String, String[]> readLine = FileUtils.readFileListLine(fileName, " ");
+                    if(readLine.containsKey(alias)) {
+                        
+                        // the replica version has this channel
+                        String[] array = readLine.get(alias);
+                        array[1] = currentRepliVersion;
+                    } else {
+                        
+                        // doesn't has the channel, Add this channel info
+                        String[] thisInfo = {alias, currentRepliVersion, Constants.REPLICATION_RUNNING};
+                        readLine.put(alias, thisInfo);
+                    }
+                    StringBuilder builder = new StringBuilder();
+                    List<String> mapKeys = new ArrayList<String>(readLine.keySet());
+                    for(String mapKey : mapKeys) {
+                        String[] array = readLine.get(mapKey);
+                        builder.append(array[0] + " " + array[1] + " " + Constants.REPLICATION_RUNNING + "\r\n");
+                        
+                        // if this channel is not sync, So not to need find the small version, Becaues this is small
+                        if(!smallVersion.equals(Constants.NO_VERSION)) {
+                            
+                            // judge the small version
+                            if(array[1].equals(Constants.NO_VERSION)) {
+                                smallVersion = Constants.NO_VERSION;
+                            } else {
+                                String str = array[1].replace("V.", "");
+                                try {
+                                    int channelVer = Integer.parseInt(str);
+                                    int smallVersinInt = Integer.parseInt(smallVersion.replace("V.", ""));
+                                    if(smallVersinInt > channelVer) {
+                                        smallVersion = String.valueOf(channelVer);
+                                    }
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                    System.err.println("The replica version is not valid ?");
+                                }
+                            }
+                        }
+                    }
+                    content = builder.toString();
+                } catch (Exception e) {
+                    System.err.println("Server create replica version occur error, Maybe the file not found.");
+                }
+                
                 FileUtils.writeFile(fileName, content.getBytes(), false);
                 System.out.println("Create the repli version file: " + fileName + " last replica version is: " + currentRepliVersion);
+                System.out.println("The shared:" + sharedKey + " replicas smallest version is:" + smallVersion);
+                
+                
+                // TODO need split twice parts
+                // one store file status 0
+                // one collect replica version find small version and modify status 1
                 SocketChannel sharedChannel = sharedChannels.get(sharedKey);
 
                 // send the code and the version to shared
@@ -1027,6 +1096,11 @@ public class EasyDFSServer {
     }
     
     
+    /**
+     * start replica sync
+     * 
+     * @throws Exception
+     */
     protected void syncReplica() throws Exception{ 
         if(!replicationChannels.isEmpty()) {
             List<String> keys = new ArrayList<String>(replicationChannels.keySet());

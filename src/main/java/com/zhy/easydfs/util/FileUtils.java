@@ -11,6 +11,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -67,17 +68,15 @@ public class FileUtils {
         return result;
     }
 
-    public static Map<String, String> readFileListLine(String filePath, String split) throws Exception {
-        Map<String, String> result = new HashMap<String, String>();
+    public static Map<String, String[]> readFileListLine(String filePath, String split) throws Exception {
+        Map<String, String[]> result = new LinkedHashMap<String, String[]>();
         FileInputStream fis = new FileInputStream(filePath);
         BufferedReader reader = new BufferedReader(new InputStreamReader(fis));
         String str = null;
         while ((str = reader.readLine()) != null) {
             String[] arr = str.split(split);
             if (arr.length > 1) {
-                result.put(arr[0], arr[1]);
-            } else {
-                result.put(arr[0], arr[0]);
+                result.put(arr[0], arr);
             }
         }
         reader.close();
