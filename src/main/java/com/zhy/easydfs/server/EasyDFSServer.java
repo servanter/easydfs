@@ -7,7 +7,6 @@ import java.io.FileNotFoundException;
 import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.lang.reflect.Array;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
@@ -15,12 +14,10 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.Timer;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -136,7 +133,8 @@ public class EasyDFSServer {
         }
         Timer timer = new Timer();
         timer.schedule(new EasyDFSObserver(), 5000, TIME);
-        timer.schedule(new RepliSync(), 10000, TIME);
+        timer.schedule(new ReplicaCollect(), 10000, 1000 * 5);
+        timer.schedule(new RepliSync(), 20000, TIME);
         EasyDFSServer dfsServer = EasyDFSServer.getInstance();
         try {
             dfsServer.init();
@@ -260,7 +258,8 @@ public class EasyDFSServer {
                 List<SocketChannel> reList = new ArrayList<SocketChannel>();
                 reList.add(channel);
                 String sharedKey = sharedKeys.get(0);
-                System.out.println("As replication channel: " + channel.socket().getRemoteSocketAddress() + " of " + sharedKey + " shared channel---");
+                System.out
+                        .println("As replication channel: " + channel.socket().getRemoteSocketAddress() + " of " + sharedKey + " shared channel---");
                 replicationChannels.put(sharedKey, reList);
             } else {
                 boolean allHasRepli = true;
@@ -271,7 +270,8 @@ public class EasyDFSServer {
                         allHasRepli = false;
                         List<SocketChannel> reList = new ArrayList<SocketChannel>();
                         reList.add(channel);
-                        System.out.println("As replication channel: " + channel.socket().getRemoteSocketAddress() + " of " + sharedKey + " shared channel---");
+                        System.out.println("As replication channel: " + channel.socket().getRemoteSocketAddress() + " of " + sharedKey
+                                + " shared channel---");
                         replicationChannels.put(sharedKey, reList);
                         break;
                     }
@@ -294,7 +294,8 @@ public class EasyDFSServer {
                     }
                     List<SocketChannel> chs = replicationChannels.get(smallSharedKey);
                     if (chs != null) {
-                        System.out.println("As replication channel: " + channel.socket().getRemoteSocketAddress() + " of " + smallSharedKey + " shared channel---");
+                        System.out.println("As replication channel: " + channel.socket().getRemoteSocketAddress() + " of " + smallSharedKey
+                                + " shared channel---");
                         chs.add(channel);
                     }
                 }
@@ -420,55 +421,56 @@ public class EasyDFSServer {
 
     /**
      * the replication receive the own shared channel send file
+     * 
      * @param channel
      */
     private void handlerRepliSyncSuccess(SocketChannel channel) {
         try {
             String version = ChannelUtils.readTop100(channel);
             String alias = ChannelUtils.getUniqueAlias(channel);
-            
+
             String sharedKey = "";
             List<String> keys = new ArrayList<String>(replicationChannels.keySet());
-            for(String key : keys) {
+            for (String key : keys) {
                 List<SocketChannel> channels = replicationChannels.get(key);
-                for(SocketChannel every : channels) {
-                    if(ChannelUtils.getUniqueAlias(every).equals(alias)) {
+                for (SocketChannel every : channels) {
+                    if (ChannelUtils.getUniqueAlias(every).equals(alias)) {
                         sharedKey = key;
                         break;
                     }
                 }
             }
-            if(sharedKey.length() > 0 && sharedChannels.containsKey(sharedKey)) {
+            if (sharedKey.length() > 0 && sharedChannels.containsKey(sharedKey)) {
                 int index = 0;
                 List<String> sharedKeys = new ArrayList<String>(sharedChannels.keySet());
-                for(String s : sharedKeys) {
-                    if(s.equals(sharedKey)) {
+                for (String s : sharedKeys) {
+                    if (s.equals(sharedKey)) {
                         break;
                     }
                     index++;
                 }
                 Map<String, String[]> versionMap = FileUtils.readFileListLine(SERVER_FOLDER + index + Constants.REPLICATION_VERSION_POST, " ");
-                if(versionMap.containsKey(alias)) {
+                if (versionMap.containsKey(alias)) {
                     String arr[] = versionMap.get(alias);
                     arr[1] = version;
                     versionMap.put(alias, arr);
                 }
                 StringBuilder builder = new StringBuilder();
                 List<String> mapKeys = new ArrayList<String>(versionMap.keySet());
-                for(String key : mapKeys) {
+                for (String key : mapKeys) {
                     String[] arr = versionMap.get(key);
-                    for(String every : arr) {
+                    for (String every : arr) {
                         builder.append(every + " ");
                     }
                     builder.append("\r\n");
                 }
                 FileUtils.writeFile(SERVER_FOLDER + index + Constants.REPLICATION_VERSION_POST, builder.toString().getBytes(), false);
             }
-            
+
         } catch (Exception e) {
             e.printStackTrace();
         }
-        
+
     }
 
     /**
@@ -478,7 +480,7 @@ public class EasyDFSServer {
      */
     private void handlerRepliSyncServerReceive(SocketChannel channel) {
         try {
-            
+
             byte[] returnCode = StringUtils.fullSpace(Code.SERVER_RECEIVE_SHARED_AND_SEND_TO_REPLICATION.getCode()).getBytes();
             String version = ChannelUtils.readTop100(channel);
             byte[] returnVersion = StringUtils.fullSpace(version).getBytes();
@@ -487,57 +489,58 @@ public class EasyDFSServer {
             String length = ChannelUtils.readTop100(channel);
             byte[] fileContent = ChannelUtils.readFile(channel, Integer.parseInt(length));
             byte[] fileLength = StringUtils.fullSpace(fileContent.length).getBytes();
-            byte[] array = new byte[returnCode.length + returnVersion.length + instruction.length + fileNameBytes.length + fileLength.length + fileContent.length];
-            
+            byte[] array = new byte[returnCode.length + returnVersion.length + instruction.length + fileNameBytes.length + fileLength.length
+                    + fileContent.length];
+
             ArrayUtils.arrayBytesCopy(returnCode, array, 0);
             ArrayUtils.arrayBytesCopy(returnVersion, array, returnCode.length);
             ArrayUtils.arrayBytesCopy(instruction, array, returnCode.length + returnVersion.length);
             ArrayUtils.arrayBytesCopy(fileNameBytes, array, returnCode.length + returnVersion.length + instruction.length);
             ArrayUtils.arrayBytesCopy(fileLength, array, returnCode.length + returnVersion.length + instruction.length + fileNameBytes.length);
-            ArrayUtils.arrayBytesCopy(fileContent, array, returnCode.length + returnVersion.length + instruction.length + fileNameBytes.length + fileLength.length);
-            
+            ArrayUtils.arrayBytesCopy(fileContent, array, returnCode.length + returnVersion.length + instruction.length + fileNameBytes.length
+                    + fileLength.length);
+
             String alias = ChannelUtils.getUniqueAlias(channel);
             int index = 0;
             List<String> keys = new ArrayList<String>(sharedChannels.keySet());
-            for(String key : keys) {
-                if(key.equals(alias)) {
+            for (String key : keys) {
+                if (key.equals(alias)) {
                     break;
                 }
                 index++;
             }
-            
-            if(sharedChannels.containsKey(alias)) {
+
+            if (sharedChannels.containsKey(alias)) {
                 List<SocketChannel> replis = replicationChannels.get(alias);
                 Map<String, String[]> map = FileUtils.readFileListLine(SERVER_FOLDER + index + Constants.REPLICATION_VERSION_POST, " ");
-                for(SocketChannel repli : replis) {
+                for (SocketChannel repli : replis) {
                     String key = ChannelUtils.getUniqueAlias(repli);
-                    if(map.containsKey(key)) {
-                        
+                    if (map.containsKey(key)) {
+
                         // the replica is new
                         String[] arr = map.get(key);
-                        if(!arr[2].equals(Constants.REPLICATION_RUNNING)) {
-                            
+                        if (!arr[2].equals(Constants.REPLICATION_RUNNING)) {
+
                             // This channel is not running.
                             continue;
                         }
-                        if(arr[1].equals(Constants.NO_VERSION)) {
+                        if (arr[1].equals(Constants.NO_VERSION)) {
                             ChannelUtils.write(repli, array);
                         } else {
-                            
+
                             // judge the replica version
                             String currentVersion = arr[1].replace("V.", "");
                             long currentVersionLong = Long.parseLong(currentVersion);
                             long receiveVersionLong = Long.parseLong(version.replace("V.", ""));
-                            if(currentVersionLong < receiveVersionLong) {
+                            if (currentVersionLong < receiveVersionLong) {
                                 ChannelUtils.write(repli, array);
                             }
                         }
-                        
-                        
+
                     }
                 }
             }
-            
+
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -550,93 +553,90 @@ public class EasyDFSServer {
      */
     private void handlerRepliSync(SocketChannel channel) {
         try {
-            
+
             // find the replication location
             String alias = ChannelUtils.getUniqueAlias(channel);
             List<String> keys = new ArrayList<String>(replicationChannels.keySet());
             String sharedKey = "";
             int index = 0;
-            loop:for(String key : keys) {
+            loop: for (String key : keys) {
                 List<SocketChannel> channels = replicationChannels.get(key);
-                for(SocketChannel sch : channels) {
-                    if(ChannelUtils.getUniqueAlias(sch).equals(alias)){
+                for (SocketChannel sch : channels) {
+                    if (ChannelUtils.getUniqueAlias(sch).equals(alias)) {
                         sharedKey = key;
                         break loop;
                     }
                 }
                 index++;
             }
-            if(sharedKey.length() > 0) {
+            if (sharedKey.length() > 0) {
 
                 // record the replication version
                 String currentRepliVersion = ChannelUtils.readTop100(channel);
                 String repliVersion = index + Constants.REPLICATION_VERSION_POST;
-                String content = alias + " " + currentRepliVersion + " " + Constants.REPLICATION_RUNNING + "\r\n";
+                String content = alias + " " + currentRepliVersion + " " + Constants.REPLICATION_WAITING + "\r\n";
                 String fileName = SERVER_FOLDER + repliVersion;
-                String smallVersion = currentRepliVersion;     // the replicas smallest version
-                
+
                 // read the replica version file and write current replica version
                 try {
                     Map<String, String[]> readLine = FileUtils.readFileListLine(fileName, " ");
-                    if(readLine.containsKey(alias)) {
-                        
+                    if (readLine.containsKey(alias)) {
+
                         // the replica version has this channel
                         String[] array = readLine.get(alias);
                         array[1] = currentRepliVersion;
                     } else {
-                        
+
                         // doesn't has the channel, Add this channel info
-                        String[] thisInfo = {alias, currentRepliVersion, Constants.REPLICATION_RUNNING};
+                        String[] thisInfo = { alias, currentRepliVersion, Constants.REPLICATION_WAITING };
                         readLine.put(alias, thisInfo);
                     }
                     StringBuilder builder = new StringBuilder();
                     List<String> mapKeys = new ArrayList<String>(readLine.keySet());
-                    for(String mapKey : mapKeys) {
+                    for (String mapKey : mapKeys) {
                         String[] array = readLine.get(mapKey);
-                        builder.append(array[0] + " " + array[1] + " " + Constants.REPLICATION_RUNNING + "\r\n");
-                        
+                        builder.append(array[0] + " " + array[1] + " " + array[2] + "\r\n");
+
                         // if this channel is not sync, So not to need find the small version, Becaues this is small
-                        if(!smallVersion.equals(Constants.NO_VERSION)) {
-                            
-                            // judge the small version
-                            if(array[1].equals(Constants.NO_VERSION)) {
-                                smallVersion = Constants.NO_VERSION;
-                            } else {
-                                String str = array[1].replace("V.", "");
-                                try {
-                                    int channelVer = Integer.parseInt(str);
-                                    int smallVersinInt = Integer.parseInt(smallVersion.replace("V.", ""));
-                                    if(smallVersinInt > channelVer) {
-                                        smallVersion = String.valueOf(channelVer);
-                                    }
-                                } catch (Exception e) {
-                                    e.printStackTrace();
-                                    System.err.println("The replica version is not valid ?");
-                                }
-                            }
-                        }
+//                        if (!smallVersion.equals(Constants.NO_VERSION)) {
+//
+//                            // judge the small version
+//                            if (array[1].equals(Constants.NO_VERSION)) {
+//                                smallVersion = Constants.NO_VERSION;
+//                            } else {
+//                                String str = array[1].replace("V.", "");
+//                                try {
+//                                    int channelVer = Integer.parseInt(str);
+//                                    int smallVersinInt = Integer.parseInt(smallVersion.replace("V.", ""));
+//                                    if (smallVersinInt > channelVer) {
+//                                        smallVersion = String.valueOf(channelVer);
+//                                    }
+//                                } catch (Exception e) {
+//                                    e.printStackTrace();
+//                                    System.err.println("The replica version is not valid ?");
+//                                }
+//                            }
+//                        }
                     }
                     content = builder.toString();
                 } catch (Exception e) {
                     System.err.println("Server create replica version occur error, Maybe the file not found.");
                 }
-                
+
                 FileUtils.writeFile(fileName, content.getBytes(), false);
                 System.out.println("Create the repli version file: " + fileName + " last replica version is: " + currentRepliVersion);
-                System.out.println("The shared:" + sharedKey + " replicas smallest version is:" + smallVersion);
-                
-                
+
                 // TODO need split twice parts
                 // one store file status 0
                 // one collect replica version find small version and modify status 1
-                SocketChannel sharedChannel = sharedChannels.get(sharedKey);
-
-                // send the code and the version to shared
-                if (sharedChannel != null) {
-                    String code = StringUtils.fullSpace(Code.REPLICATION_SYNC_SHARED.getCode());
-                    String version = StringUtils.fullSpace(currentRepliVersion);
-                    ChannelUtils.write(sharedChannel, new String(code + version));
-                }
+//                SocketChannel sharedChannel = sharedChannels.get(sharedKey);
+//
+//                // send the code and the version to shared
+//                if (sharedChannel != null) {
+//                    String code = StringUtils.fullSpace(Code.REPLICATION_SYNC_SHARED.getCode());
+//                    String version = StringUtils.fullSpace(currentRepliVersion);
+//                    ChannelUtils.write(sharedChannel, new String(code + version));
+//                }
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -889,8 +889,7 @@ public class EasyDFSServer {
     }
 
     /**
-     * TODO need override
-     * alive channels to used NOTICE: MUST wait the result receivce
+     * TODO need override alive channels to used NOTICE: MUST wait the result receivce
      */
     protected synchronized void alivedToUsed() {
         synchronized (serverChannel) {
@@ -911,7 +910,8 @@ public class EasyDFSServer {
                                     String currentRepliKey = s.socket().getRemoteSocketAddress().toString();
                                     if (badChannels.containsKey(currentRepliKey)) {
 
-                                        // judge if the this replication was a bad channel but the bad count < 2 is valid
+                                        // judge if the this replication was a bad channel but the bad count < 2 is
+                                        // valid
                                         if (badChannels.get(currentRepliKey) < 2) {
 
                                             insteadShared(keys, i, key, s, currentRepliKey);
@@ -1094,22 +1094,90 @@ public class EasyDFSServer {
             e.printStackTrace();
         }
     }
-    
-    
+
     /**
      * start replica sync
      * 
      * @throws Exception
      */
-    protected void syncReplica() throws Exception{ 
-        if(!replicationChannels.isEmpty()) {
+    protected void collectReplicaVersion() throws Exception {
+        if (!replicationChannels.isEmpty()) {
             List<String> keys = new ArrayList<String>(replicationChannels.keySet());
-            for(String key : keys) {
+            for (String key : keys) {
                 List<SocketChannel> channels = replicationChannels.get(key);
-                for(SocketChannel channel : channels) {
+                for (SocketChannel channel : channels) {
                     byte[] returnCode = StringUtils.fullSpace(Code.SERVER_SEND_REPLICATION_TO_SYNC_SHARED.getCode()).getBytes();
                     ChannelUtils.write(channel, returnCode);
                 }
+            }
+        }
+    }
+
+    /**
+     * start replica sync
+     */
+    protected void syncReplica() throws Exception {
+        if (!sharedChannels.isEmpty()) {
+            List<String> keys = new ArrayList<String>(sharedChannels.keySet());
+            int index = 0;
+            for (String key : keys) {
+                if (replicationChannels.containsKey(key)) {
+                    String fileName = index + Constants.REPLICATION_VERSION_POST;
+                    String smallVersion = ""; 
+
+                    // read the replica version file and write current replica version
+                    Map<String, String[]> readLine = FileUtils.readFileListLine(SERVER_FOLDER + fileName, " ");
+                    StringBuilder builder = new StringBuilder();
+                    List<String> mapKeys = new ArrayList<String>(readLine.keySet());
+                    for (String mapKey : mapKeys) {
+                        String[] array = readLine.get(mapKey);
+                        builder.append(array[0] + " " + array[1] + " " + Constants.REPLICATION_RUNNING + "\r\n");
+
+                        // if this channel is not sync, So not to need find the small version, Becaues this is small
+                        smallVersion = array[1];
+                        if (!smallVersion.equals(Constants.NO_VERSION)) {
+
+                            // judge the small version
+                            if (array[1].equals(Constants.NO_VERSION)) {
+                                smallVersion = Constants.NO_VERSION;
+                            } else {
+                                String str = array[1].replace("V.", "");
+                                try {
+                                    int channelVer = Integer.parseInt(str);
+                                    int smallVersinInt = Integer.parseInt(smallVersion.replace("V.", ""));
+                                    if (smallVersinInt > channelVer) {
+                                        smallVersion = String.valueOf(channelVer);
+                                    }
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                    System.err.println("The replica version is not valid ?");
+                                }
+                            }
+                        } else {
+                            
+                            // the channels has No_version, So the smallest is No_ver
+                            break;
+                        }
+                        System.out.println("The shared:" + key + " replicas smallest version is:" + smallVersion);
+                    }
+                    if(builder.length() > 0) {
+                        
+                        // Write file, update channels status is running.
+                        FileUtils.writeFile(SERVER_FOLDER + fileName, builder.toString().getBytes(), false);
+                    }
+                    
+                    // major channel
+                    SocketChannel sharedChannel = sharedChannels.get(key);
+
+                    // send the code and the version to shared
+                    if (sharedChannel != null) {
+                        String code = StringUtils.fullSpace(Code.REPLICATION_SYNC_SHARED.getCode());
+                        String version = StringUtils.fullSpace(smallVersion);
+                        ChannelUtils.write(sharedChannel, new String(code + version));
+                    }
+                    
+                }
+                index++;
             }
         }
     }
@@ -1137,4 +1205,5 @@ public class EasyDFSServer {
     protected void setSelector(Selector selector) {
         this.selector = selector;
     }
+
 }
