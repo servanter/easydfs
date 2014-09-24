@@ -88,17 +88,18 @@ public class FileUtils {
     public static String readVersion(String filePath) throws Exception{
         FileInputStream fis = new FileInputStream(filePath);
         BufferedReader reader = new BufferedReader(new InputStreamReader(fis));
+        String version = "";
         String str = null;
         while ((str = reader.readLine()) != null) {
             Pattern pattern = Pattern.compile("V.\\d{10}");
             Matcher matcher = pattern.matcher(str.trim());
             if(matcher.find()) {
-                str = matcher.group();
+                version = matcher.group();
             }
         }
         reader.close();
         fis.close();
-        return str;
+        return version;
     }
 
     /**

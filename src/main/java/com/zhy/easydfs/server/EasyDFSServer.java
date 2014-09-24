@@ -440,7 +440,7 @@ public class EasyDFSServer {
                 int index = 0;
                 List<String> sharedKeys = new ArrayList<String>(sharedChannels.keySet());
                 for(String s : sharedKeys) {
-                    if(s.equals(sharedKeys)) {
+                    if(s.equals(sharedKey)) {
                         break;
                     }
                     index++;
@@ -451,7 +451,7 @@ public class EasyDFSServer {
                 }
                 StringBuilder builder = new StringBuilder();
                 for(Entry<String, String> e : versionMap.entrySet()) {
-                    builder.append(e.getKey() + e.getValue() + "\r\n");
+                    builder.append(e.getKey() + " " + e.getValue() + "\r\n");
                 }
                 FileUtils.writeFile(SERVER_FOLDER + index + Constants.REPLICATION_VERSION_POST, builder.toString().getBytes(), false);
             }
@@ -469,12 +469,14 @@ public class EasyDFSServer {
      */
     private void handlerRepliSyncServerReceive(SocketChannel channel) {
         try {
+            
             byte[] returnCode = StringUtils.fullSpace(Code.SERVER_RECEIVE_SHARED_AND_SEND_TO_REPLICATION.getCode()).getBytes();
             String version = ChannelUtils.readTop100(channel);
             byte[] returnVersion = StringUtils.fullSpace(version).getBytes();
             byte[] instruction = StringUtils.fullSpace(ChannelUtils.readTop100(channel)).getBytes();
             byte[] fileNameBytes = StringUtils.fullSpace(ChannelUtils.readTop100(channel)).getBytes();
-            byte[] fileContent = StringUtils.fullSpace(ChannelUtils.readTop100(channel)).getBytes();
+            String length = ChannelUtils.readTop100(channel);
+            byte[] fileContent = ChannelUtils.readFile(channel, Integer.parseInt(length));
             byte[] fileLength = StringUtils.fullSpace(fileContent.length).getBytes();
             byte[] array = new byte[returnCode.length + returnVersion.length + instruction.length + fileNameBytes.length + fileLength.length + fileContent.length];
             
@@ -557,7 +559,7 @@ public class EasyDFSServer {
                 String content = alias + " " + currentRepliVersion + "\r\n";
                 String fileName = SERVER_FOLDER + repliVersion;
                 FileUtils.writeFile(fileName, content.getBytes(), false);
-                System.out.println("Create the repli version file: " + fileName);
+                System.out.println("Create the repli version file: " + fileName + " last replica version is: " + currentRepliVersion);
                 SocketChannel sharedChannel = sharedChannels.get(sharedKey);
 
                 // send the code and the version to shared

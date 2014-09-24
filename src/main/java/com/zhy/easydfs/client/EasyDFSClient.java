@@ -196,6 +196,7 @@ public class EasyDFSClient {
                 if(str == null || str.length() == 0) {
                     str = Constants.NO_VERSION;
                 }
+                System.out.println("Replica version:" + str);
                 byte[] returnCode = StringUtils.fullSpace(Code.REPLICATION_SYNC_SHARED.getCode()).getBytes();
                 byte[] version = StringUtils.fullSpace(str).getBytes();
                 byte[] array = new byte[returnCode.length + version.length];
@@ -222,11 +223,9 @@ public class EasyDFSClient {
                 case ADD:
                     String fileName = ChannelUtils.readTop100(channel);
                     String fileLength = ChannelUtils.readTop100(channel);
-                    System.out.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA " + CLIENT_STORE_PATH + fileName);
                     byte[] content = ChannelUtils.readFile(channel, Integer.parseInt(fileLength));
                     FileUtils.writeFile(CLIENT_STORE_PATH + fileName, content, false);
-                    System.out.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA " + CLIENT_STORE_PATH + fileName);
-                    
+                    System.out.println("Replica sync version:" + version + " add file:" + fileName);
                     // write version
                     StringBuilder builder = new StringBuilder();
                     builder.append(version + "\r\n");
@@ -284,6 +283,7 @@ public class EasyDFSClient {
                         if(!hasVersion) {
                             if (str.equals(version)) {
                                 hasVersion = true;
+                                continue;
                             }
                         }
                         
@@ -320,6 +320,7 @@ public class EasyDFSClient {
                             byte[] instruction = StringUtils.fullSpace(Instructions.ADD.getDesc()).getBytes();
                             byte[] fileNameBytes = StringUtils.fullSpace(str.split(" ")[1]).getBytes();
                             byte[] fileContent = FileUtils.readFile(CLIENT_STORE_PATH + str.split(" ")[1]);
+                            System.out.println("CCCCCCCCCCCCCCCCCCCCCCCCCCCCC  v:" + version + "  " + afterReadingVersion + "   " + str.split(" ")[1]);
                             byte[] fileLength = StringUtils.fullSpace(fileContent.length).getBytes();
                             byte[] returnCode = StringUtils.fullSpace(Code.SHARED_RECEIVE_SYNC_AND_SEND_REPLICATION.getCode()).getBytes();
                             byte[] array = new byte[returnCode.length + returnVersion.length + instruction.length + fileNameBytes.length + fileLength.length + fileContent.length];
